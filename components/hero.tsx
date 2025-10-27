@@ -1,44 +1,39 @@
-import { NextLogo } from "./next-logo";
-import { SupabaseLogo } from "./supabase-logo";
+import Image from "next/image"
+
+import { AuthButton } from "@/components/auth-button"
+import { ThemeSwitcher } from "./theme-switcher"
 
 export function Hero() {
   return (
-    <div className="flex flex-col gap-16 items-center">
-      <div className="flex gap-8 justify-center items-center">
-        <a
-          href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-          target="_blank"
-          rel="noreferrer"
-        >
-          <SupabaseLogo />
-        </a>
-        <span className="border-l rotate-45 h-6" />
-        <a href="https://nextjs.org/" target="_blank" rel="noreferrer">
-          <NextLogo />
-        </a>
+    <div className="container mx-auto px-6 py-16">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+        {/* Left Column - Text Content */}
+        <div className="flex flex-col gap-6">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+            Smart timing for every pickup.
+          </h1>
+          <p className="text-lg text-zinc-600 dark:text-zinc-400">
+            Arrive at exactly the right time to pick someone up from a train station or airport using real-time arrival data and predictive analysis.
+          </p>
+          <div className="flex gap-4">
+            <AuthButton />
+            <ThemeSwitcher />
+          </div>
+        </div>
+
+        {/* Right Column - Image (hidden on mobile) */}
+        <div className="hidden md:block">
+          <div className="relative h-[600px] w-full">
+            <Image
+              src="/figure.webp"
+              alt="GoFetch Figure"
+              width={600}
+              height={600}
+              className="object-cover"
+            />
+          </div>
+        </div>
       </div>
-      <h1 className="sr-only">Supabase and Next.js Starter Template</h1>
-      <p className="text-3xl lg:text-4xl !leading-tight mx-auto max-w-xl text-center">
-        The fastest way to build apps with{" "}
-        <a
-          href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-          target="_blank"
-          className="font-bold hover:underline"
-          rel="noreferrer"
-        >
-          Supabase
-        </a>{" "}
-        and{" "}
-        <a
-          href="https://nextjs.org/"
-          target="_blank"
-          className="font-bold hover:underline"
-          rel="noreferrer"
-        >
-          Next.js
-        </a>
-      </p>
-      <div className="w-full p-[1px] bg-gradient-to-r from-transparent via-foreground/10 to-transparent my-8" />
     </div>
-  );
+  )
 }
