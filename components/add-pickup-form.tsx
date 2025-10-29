@@ -22,6 +22,11 @@ interface TrainService {
   origin: string
 }
 
+interface Coordinates {
+  latitude: number
+  longitude: number
+}
+
 interface TrainlineResponse {
   data: {
     services: TrainService[]
@@ -42,6 +47,22 @@ async function fetchTrainArrivals(stationCode: string): Promise<TrainService[]> 
   }
 }
 
+const fetchTravelTime = async (from: Coordinates, to: Coordinates) => {
+  const response = await fetch('/api/travel-time', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      origin: from,
+      destination: to
+    })
+  })
+
+  const data = await response.json()
+  return data.duration
+}
+
 export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
   const [step, setStep] = useState<"train-station" | "train-selection" | "location">("train-station")
   const [stationSearch, setStationSearch] = useState("")
@@ -51,7 +72,7 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [passengerName, setPassengerName] = useState("")
   const [userLocation, setUserLocation] = useState("")
-  const [travelTime, setTravelTime] = useState("30")
+  const [userCoordsState, setUserCoordsState] = useState<Coordinates | null>(null)
   const [buffer, setBuffer] = useState("10")
 
   const filteredStations = AllStationsJSON.filter(
@@ -80,53 +101,118 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
     setStep("location")
   }
 
-  const handleSubmit = () => {
-    if (!userLocation || !travelTime || !buffer || !selectedTrain || !selectedStation) {
+  const handleUseCurrentLocation = async () => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) return
+    try {
+      setIsLoading(true)
+      const coords: Coordinates = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 10000 }
+        )
+      })
+      setUserCoordsState(coords)
+      // Optionally set a friendly label so users know current location was used
+      setUserLocation('Geolocation')
+    } catch (error) {
+      console.error('Failed to get current location:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if ((!userLocation && !userCoordsState) || !buffer || !selectedTrain || !selectedStation) {
       console.error("Please fill in all required fields.")
       return
     }
 
-    const now = Date.now()
-    
-    // Parse train times
-    const [hours, minutes] = selectedTrain.due.split(":").map(Number)
-    const trainTime = new Date()
-    trainTime.setHours(hours, minutes, 0)
-    const scheduledArrival = trainTime.getTime()
-
-    // Calculate delay if the train is not on time
-    let currentDelay = 0
-    if (selectedTrain.expected !== "On time") {
-      const [expHours, expMinutes] = selectedTrain.expected.split(":").map(Number)
-      const expectedTime = new Date()
-      expectedTime.setHours(expHours, expMinutes, 0)
-      currentDelay = Math.round((expectedTime.getTime() - trainTime.getTime()) / 60000)
+    // Get station coordinates
+    const selectedStationCoords = {
+      latitude: AllStationsJSON.find(
+        (station) => station.crsCode === selectedStation.crsCode
+      )?.lat || 0,
+      longitude: AllStationsJSON.find(
+        (station) => station.crsCode === selectedStation.crsCode
+      )?.long || 0
     }
 
-    const pickup = {
-      id: selectedTrain?.id,
-      type: "train" as const,
-      location: selectedStation?.stationName,
-      locationCode: selectedStation?.crsCode,
-      scheduledArrival,
-      currentDelay,
-      userLocation,
-      travelTime: Number.parseInt(travelTime),
-      buffer: Number.parseInt(buffer),
-      completed: false,
-      createdAt: now,
-      passengerName: passengerName || undefined,
-      origin: selectedTrain?.origin,
-      platform: selectedTrain?.platform,
-      operator: selectedTrain?.operator,
+    try {
+      // Determine user's coordinates: use geolocation if available (and set), otherwise geocode the address
+      let userCoords: Coordinates
+      if (userCoordsState) {
+        userCoords = userCoordsState
+      } else {
+        // Get user's coordinates from their address using our geocoding endpoint
+        const geocodeResponse = await fetch(
+          `/api/geocode?address=${encodeURIComponent(userLocation)}`
+        )
+        
+        if (!geocodeResponse.ok) {
+          throw new Error('Failed to geocode address')
+        }
+
+        const geocodeJson = await geocodeResponse.json()
+        if ('error' in geocodeJson) {
+          throw new Error(geocodeJson.error)
+        }
+
+        userCoords = { latitude: geocodeJson.latitude, longitude: geocodeJson.longitude }
+      }
+
+      // Get travel time using our API
+      const travelTime = await fetchTravelTime(userCoords, selectedStationCoords)
+      if (!travelTime) {
+        throw new Error('Failed to calculate travel time')
+      }
+
+      const now = Date.now()
+      
+      // Parse train times
+      const [hours, minutes] = selectedTrain.due.split(":").map(Number)
+      const trainTime = new Date()
+      trainTime.setHours(hours, minutes, 0)
+      const scheduledArrival = trainTime.getTime()
+
+      // Calculate delay if the train is not on time
+      let currentDelay = 0
+      if (selectedTrain.expected !== "On time") {
+        const [expHours, expMinutes] = selectedTrain.expected.split(":").map(Number)
+        const expectedTime = new Date()
+        expectedTime.setHours(expHours, expMinutes, 0)
+        currentDelay = Math.round((expectedTime.getTime() - trainTime.getTime()) / 60000)
+      }
+
+      const pickup = {
+        id: selectedTrain?.id,
+        type: "train" as const,
+        location: selectedStation?.stationName,
+        locationCode: selectedStation?.crsCode,
+        locationCoords: selectedStationCoords,
+        scheduledArrival,
+        currentDelay,
+        userCoords,
+        travelTime,
+        buffer: Number.parseInt(buffer),
+        completed: false,
+        createdAt: now,
+        passengerName: passengerName || undefined,
+        origin: selectedTrain?.origin,
+        platform: selectedTrain?.platform,
+        operator: selectedTrain?.operator,
+      }
+
+      // Save to localStorage
+      const pickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
+      pickups.push(pickup)
+      localStorage.setItem("gofetch_pickups", JSON.stringify(pickups))
+
+      onSuccess()
+    } catch (error) {
+      console.error('Error creating pickup:', error)
+      // Here you might want to show an error message to the user
     }
-
-    // Save to localStorage
-    const pickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-    pickups.push(pickup)
-    localStorage.setItem("gofetch_pickups", JSON.stringify(pickups))
-
-    onSuccess()
   }
 
   return (
@@ -257,29 +343,32 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
           </div>
 
           <div className="space-y-4">
-            <div>
-              <Label className="text-gray-700 font-semibold mb-2 block">Where are you leaving from?</Label>
-              <Input
-                placeholder="e.g., 123 Main Street, Manchester"
-                value={userLocation}
-                onChange={(e) => setUserLocation(e.target.value)}
-                className="border-gray-300"
-              />
-              <p className="text-xs text-gray-500 mt-2">Enter your address or current location</p>
-            </div>
-
-            <div>
-              <Label className="text-gray-700 font-semibold mb-2 block">Travel Time (minutes)</Label>
-              <Input
-                type="number"
-                placeholder="30"
-                value={travelTime}
-                onChange={(e) => setTravelTime(e.target.value)}
-                className="border-gray-300"
-              />
-              <p className="text-xs text-gray-500 mt-2">How long does it take to drive there?</p>
-            </div>
-
+            {typeof window !== 'undefined' && 'geolocation' in navigator && (
+              <div>
+                <Button
+                  onClick={handleUseCurrentLocation}
+                  variant="outline"
+                  className="mb-2"
+                >
+                  Use current location
+                </Button>
+                {userCoordsState && (
+                  <p className="text-xs text-gray-500 mb-2">Using current location: {userCoordsState.latitude.toFixed(4)}, {userCoordsState.longitude.toFixed(4)}</p>
+                )}
+              </div>
+            )}
+            {!userCoordsState && (
+              <div>
+                <Label className="text-gray-700 font-semibold mb-2 block">Where are you leaving from?</Label>
+                <Input
+                  placeholder="e.g., 123 Main Street, Manchester"
+                  value={userLocation}
+                  onChange={(e) => setUserLocation(e.target.value)}
+                  className="border-gray-300"
+                />
+                <p className="text-xs text-gray-500 mt-2">Enter your address or current location</p>
+              </div>
+            )}
             <div>
               <Label className="text-gray-700 font-semibold mb-2 block">Safety Buffer (minutes)</Label>
               <Input

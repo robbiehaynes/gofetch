@@ -15,14 +15,19 @@ import {
   type CarouselApi
 } from "@/components/ui/carousel"
 
+interface Coordinates {
+  latitude: number
+  longitude: number
+}
 interface Pickup {
   id: string
   type: "flight" | "train"
   location: string
   locationCode: string
+  locationCoords: Coordinates
   scheduledArrival: number
   currentDelay: number
-  userLocation: string
+  userCoords: Coordinates
   travelTime: number
   buffer: number
   completed: boolean
@@ -75,20 +80,35 @@ export function Dashboard() {
       const scheduledTime = parseTime(data.scheduledAt)
       const estimatedTime = parseTime(data.estimatedAt)
       const newDelay = Math.round((estimatedTime - scheduledTime) / 60000) // Convert to minutes
+
+      // Update travel time
+      const travelTimeResponse = await fetch('/api/travel-time', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          origin: activePickup?.userCoords,
+          destination: activePickup?.locationCoords
+        })
+      })
+
+      const travelTimeData = await travelTimeResponse.json()
+      const newTravelTime = travelTimeData.duration
       
       // Update pickup in local storage and state
       const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-      const updated = storedPickups.map((p: Pickup) => 
-        p.id === pickup.id ? { ...p, currentDelay: newDelay } : p
+      const updated = storedPickups.map((p: Pickup) =>
+        p.id === pickup.id ? { ...p, currentDelay: newDelay, travelTime: newTravelTime } : p
       )
       localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
       
       // Update active pickup and pickups list
-      setPickups(prev => prev.map(p => 
-        p.id === pickup.id ? { ...p, currentDelay: newDelay } : p
+      setPickups(prev => prev.map(p =>
+        p.id === pickup.id ? { ...p, currentDelay: newDelay, travelTime: newTravelTime } : p
       ))
       if (pickup.id === activePickup?.id) {
-        const updatedPickup = { ...activePickup, currentDelay: newDelay };
+        const updatedPickup = { ...activePickup, currentDelay: newDelay, travelTime: newTravelTime };
         setActivePickup(updatedPickup)
       }
     } catch (error) {
