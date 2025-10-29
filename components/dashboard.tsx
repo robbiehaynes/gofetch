@@ -16,6 +16,7 @@ import {
   CarouselPrevious,
   type CarouselApi
 } from "@/components/ui/carousel"
+import NavDock from "@/components/NavDock";
 
 interface Coordinates {
   latitude: number
@@ -447,6 +448,7 @@ export function Dashboard() {
           
         </div>
       </div>
+      <NavDock />
     </div>
   )
 }
