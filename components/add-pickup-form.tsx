@@ -240,7 +240,7 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
               <p className="text-xs text-gray-500 mt-2">Start typing to find your station</p>
             </div>
 
-            <div className="space-y-2 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
               {filteredStations.length > 0 ? (
                 filteredStations.map((station) => (
                   <Card
@@ -282,7 +282,7 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
             </p>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
             {isLoading ? (
               <p className="text-center text-gray-500 py-4">Loading train services...</p>
             ) : trainServices.length === 0 ? (

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { PickupCard } from "@/components/pickup-card"
 import { AddPickupForm } from "@/components/add-pickup-form"
-import { Plus } from "lucide-react"
+import { Plus, Check, Trash2 } from "lucide-react"
+import { MapDirectionsButton } from "@/components/maps-direction-button";
 import {
   Carousel,
   CarouselContent,
@@ -46,6 +47,8 @@ export function Dashboard() {
   const [departureTime, setDepartureTime] = useState<number | null>(null)
   const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
   const [notificationShown, setNotificationShown] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date())
+  const [isUpdating, setIsUpdating] = useState(false) 
 
   useEffect(() => {
     // Load active pickups
@@ -61,6 +64,7 @@ export function Dashboard() {
   }, [])
 
   const refreshTrainDetails = async (pickup: Pickup) => {
+    setIsUpdating(true)
     try {
       const response = await fetch(`/api/trains/details?station=${pickup.locationCode}&stationName=${pickup.location}&trainId=${pickup.id}`)
       if (!response.ok) throw new Error('Failed to fetch train details')
@@ -111,9 +115,21 @@ export function Dashboard() {
         const updatedPickup = { ...activePickup, currentDelay: newDelay, travelTime: newTravelTime };
         setActivePickup(updatedPickup)
       }
+      setLastUpdated(new Date())
     } catch (error) {
       console.error('Error refreshing train details:', error)
+    } finally {
+      setIsUpdating(false)
     }
+  }
+
+  const getLastUpdatedText = () => {
+    if (isUpdating) return "Updating..."
+    if (!lastUpdated) return ""
+    const diffMs = Date.now() - lastUpdated.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return "Last Updated: Now"
+    return `Last Updated: ${diffMin} min ago`
   }
 
   // Refresh active pickup details every minute
@@ -201,11 +217,24 @@ export function Dashboard() {
     }
   }
 
+  const handleDeletePickup = () => {
+    if (activePickup) {
+      const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
+      const updated = storedPickups.filter((p: any) => p.id !== activePickup.id)
+      localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
+      
+      // Update state
+      const newActivePickups = pickups.filter(p => p.id !== activePickup.id)
+      setPickups(newActivePickups)
+      setActivePickup(newActivePickups[0] || null)
+    }
+  }
+
   if (showAddForm) {
     return (
       <div className="min-h-screen pt-8 px-4 pb-24">
         <div className="max-w-md mx-auto">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Add Another Pickup</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-6">Add Another Pickup</h2>
           <AddPickupForm
               onSuccess={() => {
               setShowAddForm(false)
@@ -237,7 +266,7 @@ export function Dashboard() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 pb-24">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Active Pickups</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pickups</h2>
           <p className="text-gray-600 mb-6">Create a new pickup to get started</p>
           <Button
             onClick={() => setShowAddForm(true)}
@@ -256,7 +285,7 @@ export function Dashboard() {
       <div className="max-w-lg mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">GoFetch</h1>
+          <h1 className="text-3xl font-bold text-foreground">GoFetch</h1>
           <p className="text-gray-600">Active Pickup {pickups.length > 1 && `(${pickups.indexOf(activePickup) + 1}/${pickups.length})`}</p>
         </div>
 
@@ -285,24 +314,30 @@ export function Dashboard() {
         </Carousel>
 
         {/* Status Info */}
-        <Card className="p-6 border-0 shadow-sm bg-background">
+        <Card className="px-6 border-0 shadow-sm bg-background">
           <div className="space-y-4">
             {activePickup.currentDelay > 0 && (
               <div className="pb-4 border-b border-gray-200">
                 <p className="text-sm text-gray-600 mb-1">Current Delay</p>
-                <p className="text-2xl font-bold text-gray-900">
+                <p className="text-2xl font-bold text-foreground">
                   {activePickup.currentDelay > 0 ? `+${activePickup.currentDelay}` : activePickup.currentDelay} min
                 </p>
               </div>
             )}
-            
             <div className="pb-4 border-b border-gray-200">
               <p className="text-sm text-gray-600 mb-1">Travel Time</p>
-              <p className="text-lg font-semibold text-gray-900">{activePickup.travelTime} minutes</p>
+              <p className="text-lg font-semibold text-foreground mb-2">{activePickup.travelTime} minutes</p>
+              <MapDirectionsButton
+                origin={activePickup.userCoords}
+                destination={activePickup.locationCoords}
+              />
             </div>
-            <div>
+            <div className="">
               <p className="text-sm text-gray-600 mb-1">Safety Buffer</p>
-              <p className="text-lg font-semibold text-gray-900">{activePickup.buffer} minutes</p>
+              <p className="text-lg font-semibold text-foreground">{activePickup.buffer} minutes</p>
+            </div>
+            <div className="w-full flex justify-center pt-2 pb-6">
+              <span className="text-xs text-gray-500">{getLastUpdatedText()}</span>
             </div>
           </div>
         </Card>
@@ -312,18 +347,28 @@ export function Dashboard() {
           <Button
             onClick={() => setShowAddForm(true)}
             variant="outline"
-            className="w-full border-gray-300 text-gray-900 hover:bg-gray-50"
+            className="w-full text-foreground hover:bg-gray-50"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Another Pickup
           </Button>
-          <Button
-            onClick={handleCompletePickup}
-            variant="outline"
-            className="w-full border-gray-300 text-gray-900 hover:bg-gray-50 bg-transparent"
-          >
-            Mark as Complete
-          </Button>
+          <div className="grid grid-cols-2 gap-4">
+            <Button
+              onClick={handleCompletePickup}
+              variant="outline"
+              className="w-full text-foreground hover:bg-green-300 bg-transparent"
+            >
+              <Check className="w-4 h-4" /> Mark as Complete
+            </Button>
+            <Button
+              onClick={handleDeletePickup}
+              variant="outline"
+              className="w-full text-foreground hover:bg-red-300 bg-transparent"
+            >
+              <Trash2 className="w-4 h-4" /> Delete Pickup
+            </Button>
+          </div>
+          
         </div>
       </div>
     </div>
