@@ -459,7 +459,7 @@ export function Dashboard() {
               variant="outline"
               className="w-full text-foreground bg-transparent"
             >
-              <Check className="w-4 h-4" /> Mark as Complete
+              <Check className="w-4 h-4" /> Complete Pickup
             </Button>
             <Button
               onClick={handleDeletePickup}

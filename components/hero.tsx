@@ -1,7 +1,6 @@
 import Image from "next/image"
 
 import { AuthButton } from "@/components/auth-button"
-import { ThemeSwitcher } from "./theme-switcher"
 
 export function Hero() {
   return (
@@ -17,7 +16,7 @@ export function Hero() {
           </p>
           <div className="flex gap-4">
             <AuthButton />
-            <ThemeSwitcher />
+            
           </div>
         </div>
 

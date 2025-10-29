@@ -1,7 +1,8 @@
 import Dock from "@/components/Dock";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { House, CircleUserRound, Settings } from "lucide-react";
+import { House, CircleUserRound, Settings, Edit, Check, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,136 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useEffect } from "react";
+
+function AccountDrawerContent({ onClose }: { onClose: () => void }) {
+  const supabase = createClient();
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [origDisplayName, setOrigDisplayName] = useState("");
+  const [origEmail, setOrigEmail] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [editingEmail, setEditingEmail] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  useEffect(() => {
+    let mounted = true
+    const loadUser = async () => {
+      try {
+        const { data } = await supabase.auth.getUser()
+        const user = data.user
+        if (!user || !mounted) return
+        const metaName = (user.user_metadata as any)?.display_name || ""
+        setDisplayName(metaName)
+        setOrigDisplayName(metaName)
+        setEmail(user.email || "")
+        setOrigEmail(user.email || "")
+        console.log('Loaded user')
+      } catch (err) {
+        console.error('Failed to load user:', err)
+      }
+    }
+    loadUser()
+    return () => { mounted = false }
+  }, [])
+
+  const saveField = async () => {
+    try {
+      setSavingName(true)
+      setSavingEmail(true)
+
+      // Update email if it changed
+      if (email !== origEmail) {
+        const { error: emailError } = await supabase.auth.updateUser({ email })
+        if (emailError) throw emailError
+      }
+
+      // Update display name if it changed
+      if (displayName !== origDisplayName) {
+        const { error: nameError } = await supabase.auth.updateUser({
+          data: { display_name: displayName }
+        })
+        if (nameError) throw nameError
+      }
+
+      setOrigDisplayName(displayName)
+      setOrigEmail(email)
+      setEditingName(false)
+      setEditingEmail(false)
+    } catch (err) {
+      console.error('Error updating user:', err)
+      // Revert changes on error
+      setDisplayName(origDisplayName)
+      setEmail(origEmail)
+    } finally {
+      setSavingName(false)
+      setSavingEmail(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="p-4 pb-0 space-y-6">
+        <div className="flex items-start justify-between">
+          <div className="flex-1 mr-2">
+            <Label className="text-sm">Display name</Label>
+            <Input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={!editingName}
+            />
+          </div>
+          <div className="flex items-start pt-6">
+            {!editingName ? (
+              <Button variant="ghost" size="sm" className="min-h-9" onClick={() => setEditingName(true)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button variant="default" size="sm" className="min-h-9" onClick={saveField} disabled={savingName}>
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="min-h-9" onClick={() => { setDisplayName(origDisplayName); setEditingName(false) }}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-start justify-between">
+          <div className="flex-1 mr-2">
+            <Label className="text-sm">Email</Label>
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={!editingEmail}
+            />
+          </div>
+          <div className="flex-shrink-0 flex items-start pt-6">
+            {!editingEmail ? (
+              <Button variant="ghost" size="sm" className="min-h-9" onClick={() => setEditingEmail(true)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Button variant="default" size="sm" className="min-h-9" onClick={saveField} disabled={savingEmail}>
+                  <Check className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="sm" className="min-h-9" onClick={() => { setEmail(origEmail); setEditingEmail(false) }}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      <DrawerFooter className="mt-4">
+        <Button onClick={onClose}>Close</Button>
+      </DrawerFooter>
+    </>
+  )
+}
 
 export default function NavDock() {
   const router = useRouter();
@@ -91,7 +222,19 @@ export default function NavDock() {
           </AlertDialogContent>
         </AlertDialog>
       )}
-      {isAccountDrawerOpen && (<div></div>)}
+      {isAccountDrawerOpen && (
+        <Drawer open={isAccountDrawerOpen} onOpenChange={setIsAccountDrawerOpen}>
+          <DrawerContent>
+            <div className="mx-auto w-full max-w-sm">
+              <DrawerHeader>
+                <DrawerTitle>Account</DrawerTitle>
+                <DrawerDescription>Update your account settings</DrawerDescription>
+              </DrawerHeader>
+              <AccountDrawerContent onClose={() => setIsAccountDrawerOpen(false)} />
+            </div>
+          </DrawerContent>
+        </Drawer>
+      )}
       {isSettingsDrawerOpen && (
         <Drawer open={isSettingsDrawerOpen} onOpenChange={setIsSettingsDrawerOpen}>
           <DrawerContent>

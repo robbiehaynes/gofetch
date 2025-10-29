@@ -40,7 +40,7 @@ export function PickupCard({ pickup, departureTime, timeUntilDeparture }: Pickup
 
   return (
     <Card
-      className={`mt-4 p-6 rounded-t-xl rounded-b-none border-0 shadow-lg ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
+      className={`mt-4 p-6 rounded-t-xl rounded-b-none border-0 ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
