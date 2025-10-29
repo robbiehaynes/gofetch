@@ -53,8 +53,20 @@ export function Dashboard() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [isEditingBuffer, setIsEditingBuffer] = useState(false)
   const [bufferInput, setBufferInput] = useState("")
+  const [settings, setSettings] = useState({
+    notificationsEnabled: true,
+    updateFrequency: 1,
+    localOnlyMode: false
+  })
 
+  // Load settings and pickups on mount
   useEffect(() => {
+    // Load settings
+    const storedSettings = localStorage.getItem("gofetch_settings")
+    if (storedSettings) {
+      setSettings(JSON.parse(storedSettings))
+    }
+
     // Load active pickups
     const storedPickups = localStorage.getItem("gofetch_pickups")
     if (storedPickups) {
@@ -64,6 +76,17 @@ export function Dashboard() {
       if (activePickups.length > 0) {
         setActivePickup(activePickups[0])
       }
+    }
+
+    // Listen for settings updates
+    const handleSettingsUpdate = (event: CustomEvent) => {
+      setSettings(event.detail)
+    }
+
+    window.addEventListener("settingsUpdated", handleSettingsUpdate as EventListener)
+
+    return () => {
+      window.removeEventListener("settingsUpdated", handleSettingsUpdate as EventListener)
     }
   }, [])
 
@@ -143,7 +166,7 @@ export function Dashboard() {
     // Set up interval for periodic refreshes
     const interval = setInterval(() => {
       refreshTrainDetails(activePickup)
-    }, 60000) // Every minute
+    }, settings.updateFrequency * 60000) // Convert minutes to milliseconds
 
     return () => clearInterval(interval)
   }, [activePickup])
@@ -172,12 +195,12 @@ export function Dashboard() {
 
       if (timeLeft <= 0) {
         setTimeUntilDeparture(0)
-        if (!notificationShown) {
+        if (!notificationShown && settings.notificationsEnabled) {
           // Show notification
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification("GoFetch", {
               body: `Leave now to arrive ${activePickup.buffer} minutes before the ${new Date(activePickup.scheduledArrival).toLocaleTimeString()} train from ${activePickup.origin} gets in at ${activePickup.location}`,
-              icon: "/placeholder-logo.svg",
+              icon: "/car-driving.webp",
             })
           }
           setNotificationShown(true)
@@ -194,7 +217,7 @@ export function Dashboard() {
     const countdownInterval = setInterval(updateCountdown, 1000)
 
     return () => clearInterval(countdownInterval)
-  }, [activePickup, notificationShown])
+  }, [activePickup])
 
   // Handle carousel selection
   useEffect(() => {
@@ -292,26 +315,27 @@ export function Dashboard() {
       <div className="min-h-screen flex flex-col items-center justify-center px-4 pb-24">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pickups</h2>
-          <p className="text-gray-600 mb-6">Create a new pickup to get started</p>
+          <p className="text-muted-foreground mb-6">Create a new pickup to get started</p>
           <Button
+            variant={"default"}
             onClick={() => setShowAddForm(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Pickup
           </Button>
         </div>
+        <NavDock />
       </div>
     )
   }
 
   return (
     <div className="min-h-screen pt-8 px-4 pb-24">
-      <div className="max-w-lg mx-auto space-y-6">
+      <div className="max-w-lg mx-auto">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-foreground">GoFetch</h1>
-          <p className="text-gray-600">Active Pickup {pickups.length > 1 && `(${pickups.indexOf(activePickup) + 1}/${pickups.length})`}</p>
+          <p className="text-muted-foreground">Active Pickup {pickups.length > 1 && `(${pickups.indexOf(activePickup) + 1}/${pickups.length})`}</p>
         </div>
 
         {/* Main Pickup Card */}
@@ -339,18 +363,18 @@ export function Dashboard() {
         </Carousel>
 
         {/* Status Info */}
-        <Card className="px-6 border-0 shadow-lg bg-background">
+        <Card className="mb-4 p-6 border-0 rounded-t-none rounded-b-xl shadow-lg bg-background dark:bg-stone-900">
           <div className="space-y-4">
             {activePickup.currentDelay > 0 && (
               <div className="pb-4 border-b border-gray-200">
-                <p className="text-sm text-gray-600 mb-1">Current Delay</p>
+                <p className="text-sm text-muted-foreground mb-1">Current Delay</p>
                 <p className="text-2xl font-bold text-foreground">
                   {activePickup.currentDelay > 0 ? `+${activePickup.currentDelay}` : activePickup.currentDelay} min
                 </p>
               </div>
             )}
             <div className="pb-4 border-b border-gray-200">
-              <p className="text-sm text-gray-600 mb-1">Live Travel Time</p>
+              <p className="text-sm text-muted-foreground mb-1">Live Travel Time</p>
               <p className="text-lg font-semibold text-foreground mb-2">{activePickup.travelTime} minutes</p>
               <MapDirectionsButton
                 origin={activePickup.userCoords}
@@ -360,7 +384,7 @@ export function Dashboard() {
             <div className="">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Safety Buffer</p>
+                  <p className="text-sm text-muted-foreground mb-1">Safety Buffer</p>
                   {isEditingBuffer ? (
                     <div className="flex items-center gap-2">
                       <Input
@@ -378,7 +402,7 @@ export function Dashboard() {
                           }
                         }}
                       />
-                      <span className="text-sm text-gray-600">minutes</span>
+                      <span className="text-sm text-muted-foreground">minutes</span>
                     </div>
                   ) : (
                     <p className="text-lg font-semibold text-foreground">{activePickup.buffer} minutes</p>
@@ -413,7 +437,7 @@ export function Dashboard() {
                 <p className="text-sm text-gray-500">This buffer is added to ensure you arrive early. Adjust as needed.</p>
               </div>
             </div>
-            <div className="w-full flex justify-center pt-2 pb-6">
+            <div className="w-full flex justify-center pt-2">
               <span className="text-xs text-gray-500">{getLastUpdatedText()}</span>
             </div>
           </div>
@@ -424,7 +448,7 @@ export function Dashboard() {
           <Button
             onClick={() => setShowAddForm(true)}
             variant="outline"
-            className="w-full text-foreground hover:bg-gray-50"
+            className="w-full text-foreground bg-transparent"
           >
             <Plus className="w-4 h-4 mr-2" />
             Add Another Pickup
@@ -433,14 +457,14 @@ export function Dashboard() {
             <Button
               onClick={handleCompletePickup}
               variant="outline"
-              className="w-full text-foreground hover:bg-green-300 bg-transparent"
+              className="w-full text-foreground bg-transparent"
             >
               <Check className="w-4 h-4" /> Mark as Complete
             </Button>
             <Button
               onClick={handleDeletePickup}
               variant="outline"
-              className="w-full text-foreground hover:bg-red-300 bg-transparent"
+              className="w-full text-foreground bg-transparent"
             >
               <Trash2 className="w-4 h-4" /> Delete Pickup
             </Button>

@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import AllStationsJSON, { StationData } from "uk-railway-stations"
-import { ArrowLeft, Clock } from "lucide-react"
+import { ArrowLeft, Clock, Pin, Check } from "lucide-react"
 
 interface AddPickupFormProps {
   onSuccess: () => void
@@ -221,15 +222,15 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
       {step === "train-station" && (
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-6">
-            <button onClick={onCancel} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <h2 className="text-2xl font-bold text-gray-900">Select Station</h2>
+            <Button onClick={onCancel} variant={"ghost"} className="p-2 rounded-lg">
+              <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+            </Button>
+            <h2 className="text-2xl font-bold text-foreground">Select Station</h2>
           </div>
 
           <div className="space-y-4">
             <div>
-              <Label className="text-gray-700 font-semibold mb-2 block">Train Station</Label>
+              <Label className="text-muted-foreground font-semibold mb-2 block">Train Station</Label>
               <Input
                 placeholder="Search station name or code..."
                 value={stationSearch}
@@ -237,30 +238,33 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
                 className="border-gray-300"
                 autoFocus
               />
-              <p className="text-xs text-gray-500 mt-2">Start typing to find your station</p>
+              <p className="text-xs text-muted-foreground mt-2">Start typing to find your station</p>
             </div>
 
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
-              {filteredStations.length > 0 ? (
-                filteredStations.map((station) => (
-                  <Card
-                    key={station.crsCode}
-                    onClick={() => handleStationSelect(station)}
-                    className="p-4 border border-gray-200 cursor-pointer hover:border-blue-600 hover:bg-blue-50 transition-all"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-semibold text-gray-900">{station.stationName}</h3>
-                        <p className="text-sm text-gray-500">{station.crsCode}</p>
+            <div className="relative">
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pb-16">
+                {filteredStations.length > 0 ? (
+                  filteredStations.map((station) => (
+                    <Card
+                      key={station.crsCode}
+                      onClick={() => handleStationSelect(station)}
+                      className="p-4 mr-2 border border-gray-200 cursor-pointer hover:bg-muted transition-all"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-semibold text-foreground">{station.stationName}</h3>
+                          <p className="text-sm text-muted-foreground">{station.crsCode}</p>
+                        </div>
                       </div>
-                    </div>
-                  </Card>
-                ))
-              ) : stationSearch ? (
-                <p className="text-center text-gray-500 py-4">No stations found</p>
-              ) : (
-                <p className="text-center text-gray-500 py-4">Start typing to search</p>
-              )}
+                    </Card>
+                  ))
+                ) : stationSearch ? (
+                  <p className="text-center text-muted-foreground py-4">No stations found</p>
+                ) : (
+                  <p className="text-center text-muted-foreground py-4">Start typing to search</p>
+                )}
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
             </div>
           </div>
         </div>
@@ -270,61 +274,64 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
       {step === "train-selection" && selectedStation && (
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-6">
-            <button onClick={() => setStep("train-station")} className="p-2 hover:bg-gray-100 rounded-lg">
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <h2 className="text-2xl font-bold text-gray-900">Select Train</h2>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-            <p className="text-sm text-gray-700">
-              <span className="font-semibold">{selectedStation.stationName}</span>
-            </p>
-          </div>
-
-          <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-            {isLoading ? (
-              <p className="text-center text-gray-500 py-4">Loading train services...</p>
-            ) : trainServices.length === 0 ? (
-              <p className="text-center text-gray-500 py-4">No trains found</p>
-            ) : (
-              trainServices.map((train) => (
-                <Card
-                  key={train.id}
-                  onClick={() => handleTrainSelect(train)}
-                  className="p-4 border border-gray-200 cursor-pointer hover:border-blue-600 hover:bg-blue-50 transition-all"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-gray-600" />
-                        <span className="font-semibold text-gray-900">{train.due}</span>
-                        {train.expected !== "On time" && (
-                          <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
-                            Expected: {train.expected}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600">From: {train.origin}</p>
-                      <div className="flex gap-4 mt-1">
-                        <p className="text-xs text-gray-500">Platform: {train.platform || "TBA"}</p>
-                        <p className="text-xs text-gray-500">{train.operator}</p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))
-            )}
+            <Button variant={"ghost"} onClick={() => setStep("train-station")} className="p-2 rounded-lg">
+              <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+            </Button>
+            <h2 className="text-2xl font-bold text-foreground">Select Train</h2>
           </div>
 
           <div>
-            <Label className="text-gray-700 font-semibold mb-2 block">Passenger Name (Optional)</Label>
+            <Label className="text-muted-foreground font-semibold mb-2 block">Passenger Name (Optional)</Label>
             <Input
               placeholder="e.g., John Smith"
               value={passengerName}
               onChange={(e) => setPassengerName(e.target.value)}
               className="border-gray-300"
             />
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <p className="text-sm text-muted-foreground dark:text-background">
+              <span className="font-semibold">{selectedStation.stationName} ({selectedStation.crsCode})</span>
+            </p>
+          </div>
+
+          <div className="relative">
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pb-8">
+              {isLoading ? (
+                <p className="text-center text-muted-foreground py-4">Loading train services...</p>
+              ) : trainServices.length === 0 ? (
+                <p className="text-center text-muted-foreground py-4">No trains found</p>
+              ) : (
+                trainServices.map((train) => (
+                  <Card
+                    key={train.id}
+                    onClick={() => handleTrainSelect(train)}
+                    className="p-4 mr-2 border border-gray-200 cursor-pointer hover:bg-muted transition-all"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-semibold text-foreground">{train.due}</span>
+                          {train.expected !== "On time" && (
+                            <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                              Expected: {train.expected}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">From: {train.origin}</p>
+                        <div className="flex gap-4 mt-1">
+                          <p className="text-xs text-muted-foreground">Platform: {train.platform || "TBA"}</p>
+                          <p className="text-xs text-muted-foreground">{train.operator}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              )}
+            </div>
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
           </div>
         </div>
       )}
@@ -337,40 +344,50 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
               onClick={() => setStep("train-selection")}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ArrowLeft className="w-5 h-5 text-muted-foreground" />
             </button>
-            <h2 className="text-2xl font-bold text-gray-900">Your Location</h2>
+            <h2 className="text-2xl font-bold text-foreground">Your Location</h2>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-muted-foreground font-semibold">Where are you leaving from?</Label>
             {typeof window !== 'undefined' && 'geolocation' in navigator && (
               <div>
                 <Button
                   onClick={handleUseCurrentLocation}
                   variant="outline"
-                  className="mb-2"
+                  className="w-full"
+                  disabled={isLoading}
                 >
-                  Use current location
+                  {isLoading ? (
+                    <>
+                      <Spinner className="w-2 h-2" /> Finding location...
+                    </>
+                  ) : userCoordsState ? 
+                    (<>
+                      <Check className="w-2 h-2" /> Using current location
+                    </>) :
+                    (<>
+                      <Pin className="w-2 h-2" /> Use current location
+                    </>)}
                 </Button>
-                {userCoordsState && (
-                  <p className="text-xs text-gray-500 mb-2">Using current location: {userCoordsState.latitude.toFixed(4)}, {userCoordsState.longitude.toFixed(4)}</p>
-                )}
               </div>
             )}
-            {!userCoordsState && (
+            {userCoordsState ? (
+              <p className="text-xs text-muted-foreground mt2">Using current location: {userCoordsState.latitude.toFixed(4)}, {userCoordsState.longitude.toFixed(4)}</p>
+            ) : (
               <div>
-                <Label className="text-gray-700 font-semibold mb-2 block">Where are you leaving from?</Label>
                 <Input
                   placeholder="e.g., 123 Main Street, Manchester"
                   value={userLocation}
                   onChange={(e) => setUserLocation(e.target.value)}
                   className="border-gray-300"
                 />
-                <p className="text-xs text-gray-500 mt-2">Enter your address or current location</p>
+                <p className="text-xs text-muted-foreground mt-2">Enter your address or current location</p>
               </div>
             )}
-            <div>
-              <Label className="text-gray-700 font-semibold mb-2 block">Safety Buffer (minutes)</Label>
+            <div className="my-6 py-2">
+              <Label className="text-muted-foreground font-semibold">Safety Buffer (minutes)</Label>
               <Input
                 type="number"
                 placeholder="10"
@@ -378,19 +395,20 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
                 onChange={(e) => setBuffer(e.target.value)}
                 className="border-gray-300"
               />
-              <p className="text-xs text-gray-500 mt-2">Extra time to arrive early</p>
+              <p className="text-xs text-muted-foreground mt-2">Extra time to arrive early</p>
             </div>
 
             <Button
+              variant={"default"}
               onClick={handleSubmit}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold h-11"
+              className="w-full font-semibold"
             >
               Create Pickup
             </Button>
             <Button
               onClick={onCancel}
               variant="outline"
-              className="w-full border-gray-300 text-gray-900 hover:bg-gray-50 bg-transparent"
+              className="w-full border-gray-300 text-foreground hover:bg-gray-50 bg-transparent"
             >
               Cancel
             </Button>
