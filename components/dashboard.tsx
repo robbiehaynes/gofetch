@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { PickupCard } from "@/components/pickup-card"
 import { AddPickupForm } from "@/components/add-pickup-form"
 import { Plus, Check, Trash2 } from "lucide-react"
@@ -48,7 +49,9 @@ export function Dashboard() {
   const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
   const [notificationShown, setNotificationShown] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date())
-  const [isUpdating, setIsUpdating] = useState(false) 
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [isEditingBuffer, setIsEditingBuffer] = useState(false)
+  const [bufferInput, setBufferInput] = useState("")
 
   useEffect(() => {
     // Load active pickups
@@ -217,6 +220,27 @@ export function Dashboard() {
     }
   }
 
+  const handleUpdateBuffer = () => {
+    if (!activePickup || !bufferInput) return
+
+    const newBuffer = parseInt(bufferInput)
+    if (isNaN(newBuffer) || newBuffer < 0) return
+
+    // Update in localStorage
+    const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
+    const updated = storedPickups.map((p: Pickup) =>
+      p.id === activePickup.id ? { ...p, buffer: newBuffer } : p
+    )
+    localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
+
+    // Update state
+    setPickups(pickups.map(p =>
+      p.id === activePickup.id ? { ...p, buffer: newBuffer } : p
+    ))
+    setActivePickup({ ...activePickup, buffer: newBuffer })
+    setIsEditingBuffer(false)
+  }
+
   const handleDeletePickup = () => {
     if (activePickup) {
       const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
@@ -314,7 +338,7 @@ export function Dashboard() {
         </Carousel>
 
         {/* Status Info */}
-        <Card className="px-6 border-0 shadow-sm bg-background">
+        <Card className="px-6 border-0 shadow-lg bg-background">
           <div className="space-y-4">
             {activePickup.currentDelay > 0 && (
               <div className="pb-4 border-b border-gray-200">
@@ -325,7 +349,7 @@ export function Dashboard() {
               </div>
             )}
             <div className="pb-4 border-b border-gray-200">
-              <p className="text-sm text-gray-600 mb-1">Travel Time</p>
+              <p className="text-sm text-gray-600 mb-1">Live Travel Time</p>
               <p className="text-lg font-semibold text-foreground mb-2">{activePickup.travelTime} minutes</p>
               <MapDirectionsButton
                 origin={activePickup.userCoords}
@@ -333,8 +357,60 @@ export function Dashboard() {
               />
             </div>
             <div className="">
-              <p className="text-sm text-gray-600 mb-1">Safety Buffer</p>
-              <p className="text-lg font-semibold text-foreground">{activePickup.buffer} minutes</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Safety Buffer</p>
+                  {isEditingBuffer ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={bufferInput}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBufferInput(e.target.value)}
+                        className="w-20 h-8"
+                        autoFocus
+                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                          if (e.key === 'Enter') {
+                            handleUpdateBuffer()
+                          }
+                          if (e.key === 'Escape') {
+                            setIsEditingBuffer(false)
+                          }
+                        }}
+                      />
+                      <span className="text-sm text-gray-600">minutes</span>
+                    </div>
+                  ) : (
+                    <p className="text-lg font-semibold text-foreground">{activePickup.buffer} minutes</p>
+                  )}
+                </div>
+                <div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (!isEditingBuffer) {
+                        setBufferInput(activePickup.buffer.toString())
+                      }
+                      setIsEditingBuffer(!isEditingBuffer)
+                    }}
+                  >
+                    {isEditingBuffer ? "Cancel" : "Edit"}
+                  </Button>
+                  {isEditingBuffer && (
+                    <Button
+                      variant="default"
+                      className="ml-2"
+                      size="sm"
+                      onClick={handleUpdateBuffer}
+                    >
+                      Save
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-2">
+                <p className="text-sm text-gray-500">This buffer is added to ensure you arrive early. Adjust as needed.</p>
+              </div>
             </div>
             <div className="w-full flex justify-center pt-2 pb-6">
               <span className="text-xs text-gray-500">{getLastUpdatedText()}</span>
