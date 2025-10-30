@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
 import PlacesAutocomplete from "@/components/autocomplete-input"
 import AllStationsJSON, { StationData } from "uk-railway-stations"
 import { ArrowLeft, Clock, Pin, Check } from "lucide-react"
@@ -134,6 +135,17 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
   }
 
   const handleTrainSelect = (train: TrainService) => {
+    // Check if train has already been added
+    const existingPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
+    const isDuplicate = existingPickups.some((pickup: any) => 
+      pickup.id === train.id && !pickup.completed
+    )
+
+    if (isDuplicate) {
+      toast.error("This train is already in your active pickups")
+      return
+    }
+    
     setSelectedTrain(train)
     setStep("location")
   }
@@ -271,7 +283,6 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
                 placeholder="Search station name or code..."
                 value={stationSearch}
                 onChange={(e) => setStationSearch(e.target.value)}
-                className="border-gray-300"
                 autoFocus
               />
               <p className="text-xs text-muted-foreground mt-2">Start typing to find your station</p>
