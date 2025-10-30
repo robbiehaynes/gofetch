@@ -36,7 +36,7 @@ export function LoginForm({
         email,
         options: {
           shouldCreateUser: true,
-          emailRedirectTo: `${window.location.origin}/app`,
+          emailRedirectTo: `${process.env.SITE_URL}/app`,
         },
       });
       if (error) throw error;
@@ -68,6 +68,7 @@ export function LoginForm({
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}

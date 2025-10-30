@@ -24,6 +24,13 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "@/components/ui/drawer" 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -167,6 +174,7 @@ export default function NavDock() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [updateFrequency, setUpdateFrequency] = useState("1");
   const [localOnlyMode, setLocalOnlyMode] = useState(false);
+  const [preferredNavigationApp, setPreferredNavigationApp] = useState("google");
 
   // Load settings on mount
   useEffect(() => {
@@ -176,6 +184,7 @@ export default function NavDock() {
       setNotificationsEnabled(parsed.notificationsEnabled ?? true);
       setUpdateFrequency(parsed.updateFrequency ?? "1");
       setLocalOnlyMode(parsed.localOnlyMode ?? false);
+      setPreferredNavigationApp(parsed.preferredNavigationApp ?? "google");
     }
   }, []);
 
@@ -185,7 +194,9 @@ export default function NavDock() {
       updateFrequency: parseInt(updateFrequency),
       localOnlyMode
     };
-    localStorage.setItem("gofetch_settings", JSON.stringify(settings));
+    // Persist preferred navigation app as part of settings
+    const settingsWithPref = { ...settings, preferredNavigationApp };
+    localStorage.setItem("gofetch_settings", JSON.stringify(settingsWithPref));
     setIsSettingsDrawerOpen(false);
 
     // Request notification permission if enabled
@@ -194,7 +205,7 @@ export default function NavDock() {
     }
 
     // Dispatch custom event for dashboard to pick up changes
-    window.dispatchEvent(new CustomEvent("settingsUpdated", { detail: settings }));
+    window.dispatchEvent(new CustomEvent("settingsUpdated", { detail: settingsWithPref }));
   };
 
   const items = [
@@ -262,6 +273,25 @@ export default function NavDock() {
                     onChange={(e) => setUpdateFrequency(e.target.value)}
                   />
                   <p className="text-sm text-gray-500">Minimum 1 minute</p>
+                </div>
+
+                {/* Preferred Navigation App */}
+                <div className="space-y-2">
+                  <Label className="block">Preferred Navigation App</Label>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" className="w-full text-left">
+                        {preferredNavigationApp === 'apple' ? 'Apple Maps' : preferredNavigationApp === 'waze' ? 'Waze' : 'Google Maps'}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuRadioGroup value={preferredNavigationApp} onValueChange={(v) => setPreferredNavigationApp(v)}>
+                        <DropdownMenuRadioItem value="google">Google Maps</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="apple">Apple Maps</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="waze">Waze</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 <div className="flex items-center space-x-2">
