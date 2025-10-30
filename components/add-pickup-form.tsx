@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import PlacesAutocomplete from "@/components/autocomplete-input"
 import AllStationsJSON, { StationData } from "uk-railway-stations"
 import { ArrowLeft, Clock, Pin, Check } from "lucide-react"
 
@@ -76,11 +77,46 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
   const [userCoordsState, setUserCoordsState] = useState<Coordinates | null>(null)
   const [buffer, setBuffer] = useState("10")
 
-  const filteredStations = AllStationsJSON.filter(
-    (station) =>
-      station.stationName.toLowerCase().includes(stationSearch.toLowerCase()) ||
-      station.crsCode.toLowerCase().includes(stationSearch.toLowerCase()),
-  )
+
+  const filteredStations = useMemo(() => {
+    if (!stationSearch) return []
+    const searchTerm = stationSearch.toLowerCase().trim()
+    
+    // Return empty if search is too short
+    if (searchTerm.length < 2) return []
+    
+    return AllStationsJSON
+      .filter((station) => {
+        const name = station.stationName.toLowerCase()
+        const code = station.crsCode.toLowerCase()
+        
+        // Exact matches first
+        if (name === searchTerm || code === searchTerm) return true
+        
+        // Then starts with
+        if (name.startsWith(searchTerm) || code.startsWith(searchTerm)) return true
+        
+        // Then includes
+        return name.includes(searchTerm) || code.includes(searchTerm)
+      })
+      .sort((a, b) => {
+        const aName = a.stationName.toLowerCase()
+        const bName = b.stationName.toLowerCase()
+        const searchTerm = stationSearch.toLowerCase()
+        
+        // Exact matches first
+        if (aName === searchTerm) return -1
+        if (bName === searchTerm) return 1
+        
+        // Then starts with
+        if (aName.startsWith(searchTerm) && !bName.startsWith(searchTerm)) return -1
+        if (bName.startsWith(searchTerm) && !aName.startsWith(searchTerm)) return 1
+        
+        // Then alphabetical
+        return aName.localeCompare(bName)
+      })
+      .slice(0, 20) // Limit results for performance
+  }, [stationSearch])
 
   const handleStationSelect = async (station: StationData) => {
     setSelectedStation(station)
@@ -261,7 +297,7 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
                 ) : stationSearch ? (
                   <p className="text-center text-muted-foreground py-4">No stations found</p>
                 ) : (
-                  <p className="text-center text-muted-foreground py-4">Start typing to search</p>
+                  <></>
                 )}
               </div>
               <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
@@ -377,11 +413,15 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
               <p className="text-xs text-muted-foreground mt2">Using current location: {userCoordsState.latitude.toFixed(4)}, {userCoordsState.longitude.toFixed(4)}</p>
             ) : (
               <div>
-                <Input
-                  placeholder="e.g., 123 Main Street, Manchester"
+                <PlacesAutocomplete
                   value={userLocation}
-                  onChange={(e) => setUserLocation(e.target.value)}
-                  className="border-gray-300"
+                  onChange={(v: string) => { setUserLocation(v); }}
+                  onSelect={(place) => {
+                    setUserLocation(place.address)
+                    if (place.location) {
+                      setUserCoordsState(place.location)
+                    }
+                  }}
                 />
                 <p className="text-xs text-muted-foreground mt-2">Enter your address or current location</p>
               </div>

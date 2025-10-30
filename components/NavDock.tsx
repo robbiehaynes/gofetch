@@ -53,7 +53,6 @@ function AccountDrawerContent({ onClose }: { onClose: () => void }) {
         setOrigDisplayName(metaName)
         setEmail(user.email || "")
         setOrigEmail(user.email || "")
-        console.log('Loaded user')
       } catch (err) {
         console.error('Failed to load user:', err)
       }

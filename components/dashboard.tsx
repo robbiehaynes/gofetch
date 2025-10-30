@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react"
+import { setOptions } from "@googlemaps/js-api-loader";
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -58,6 +59,13 @@ export function Dashboard() {
     updateFrequency: 1,
     localOnlyMode: false
   })
+
+  useEffect(() => {
+    setOptions({
+      key: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+      v: "weekly",
+    })
+  }, [])
 
   // Load settings and pickups on mount
   useEffect(() => {
