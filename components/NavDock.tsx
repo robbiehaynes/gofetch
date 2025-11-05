@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -175,6 +176,8 @@ export default function NavDock() {
   const [updateFrequency, setUpdateFrequency] = useState("1");
   const [localOnlyMode, setLocalOnlyMode] = useState(false);
   const [preferredNavigationApp, setPreferredNavigationApp] = useState("google");
+  const [activePickupsCount, setActivePickupsCount] = useState(0);
+  const [completedPickupsCount, setCompletedPickupsCount] = useState(0);
 
   // Load settings on mount
   useEffect(() => {
@@ -186,7 +189,29 @@ export default function NavDock() {
       setLocalOnlyMode(parsed.localOnlyMode ?? false);
       setPreferredNavigationApp(parsed.preferredNavigationApp ?? "google");
     }
+    // Initial pickup counts
+    refreshPickupCounts();
   }, []);
+
+  // Recompute counts whenever the Settings drawer is opened
+  useEffect(() => {
+    if (isSettingsDrawerOpen) {
+      refreshPickupCounts();
+    }
+  }, [isSettingsDrawerOpen]);
+
+  const refreshPickupCounts = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]");
+      const active = stored.filter((p: any) => !p.completed).length;
+      const completed = stored.filter((p: any) => !!p.completed).length;
+      setActivePickupsCount(active);
+      setCompletedPickupsCount(completed);
+    } catch {
+      setActivePickupsCount(0);
+      setCompletedPickupsCount(0);
+    }
+  }
 
   const handleSaveSettings = () => {
     const settings = {
@@ -238,8 +263,19 @@ export default function NavDock() {
             <div className="mx-auto w-full max-w-sm">
               <DrawerHeader>
                 <DrawerTitle>Account</DrawerTitle>
-                <DrawerDescription>Update your account settings</DrawerDescription>
+                <DrawerDescription>View and update your account settings</DrawerDescription>
               </DrawerHeader>
+                {/* Pickup counts */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Card style={{ aspectRatio: "1 / 1" }} className="flex flex-col items-center justify-center">
+                    <p className="text-sm text-muted-foreground">Active</p>
+                    <p className="text-3xl font-bold">{activePickupsCount}</p>
+                  </Card>
+                  <Card style={{ aspectRatio: "1 / 1" }} className="flex flex-col items-center justify-center">
+                    <p className="text-sm text-muted-foreground">Completed</p>
+                    <p className="text-3xl font-bold">{completedPickupsCount}</p>
+                  </Card>
+                </div>
               <AccountDrawerContent onClose={() => setIsAccountDrawerOpen(false)} />
             </div>
           </DrawerContent>
