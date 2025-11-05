@@ -268,7 +268,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen pt-8 px-4 pb-24">
-      <div className="max-w-sm md:max-w-lg mx-auto">
+      <div className="max-w-[90vw] md:max-w-lg mx-auto">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-foreground">GoFetch</h1>

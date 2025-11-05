@@ -23,8 +23,6 @@ export async function GET(request: Request) {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; GoFetch/1.0;)',
           'Accept': 'application/json',
-          'Origin': 'https://www.thetrainline.com',
-          'Referer': 'https://www.thetrainline.com/'
         },
       }
     )

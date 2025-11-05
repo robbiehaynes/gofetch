@@ -36,9 +36,11 @@ interface TrainlineResponse {
   }
 }
 
-async function fetchTrainArrivals(stationCode: string): Promise<TrainService[]> {
+async function fetchTrainArrivals(stationCode: string, fromCode?: string | null): Promise<TrainService[]> {
   try {
-    const response = await fetch(`/api/trains?station=${stationCode}`)
+    const query = new URLSearchParams({ station: stationCode })
+    if (fromCode) query.set('from', fromCode)
+    const response = await fetch(`/api/trains?${query.toString()}`)
     if (!response.ok) {
       throw new Error('Failed to fetch train arrivals')
     }
@@ -69,7 +71,9 @@ const fetchTravelTime = async (from: Coordinates, to: Coordinates) => {
 export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
   const [step, setStep] = useState<"train-station" | "train-selection" | "location">("train-station")
   const [stationSearch, setStationSearch] = useState("")
+  const [fromStationSearch, setFromStationSearch] = useState("")
   const [selectedStation, setSelectedStation] = useState<StationData | null>(null)
+  const [selectedFromStation, setSelectedFromStation] = useState<StationData | null>(null)
   const [selectedTrain, setSelectedTrain] = useState<TrainService | null>(null)
   const [trainServices, setTrainServices] = useState<TrainService[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -119,13 +123,38 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
       .slice(0, 20) // Limit results for performance
   }, [stationSearch])
 
+  const filteredFromStations = useMemo(() => {
+    if (!fromStationSearch) return []
+    const searchTerm = fromStationSearch.toLowerCase().trim()
+    if (searchTerm.length < 2) return []
+    return AllStationsJSON
+      .filter((station) => {
+        const name = station.stationName.toLowerCase()
+        const code = station.crsCode.toLowerCase()
+        if (name === searchTerm || code === searchTerm) return true
+        if (name.startsWith(searchTerm) || code.startsWith(searchTerm)) return true
+        return name.includes(searchTerm) || code.includes(searchTerm)
+      })
+      .sort((a, b) => {
+        const aName = a.stationName.toLowerCase()
+        const bName = b.stationName.toLowerCase()
+        const s = fromStationSearch.toLowerCase()
+        if (aName === s) return -1
+        if (bName === s) return 1
+        if (aName.startsWith(s) && !bName.startsWith(s)) return -1
+        if (bName.startsWith(s) && !aName.startsWith(s)) return 1
+        return aName.localeCompare(bName)
+      })
+      .slice(0, 10)
+  }, [fromStationSearch])
+
   const handleStationSelect = async (station: StationData) => {
     setSelectedStation(station)
     setIsLoading(true)
     setStep("train-selection")
     
     try {
-      const services = await fetchTrainArrivals(station.crsCode)
+      const services = await fetchTrainArrivals(station.crsCode, selectedFromStation?.crsCode || null)
       setTrainServices(services)
     } catch (error) {
       console.error("Error fetching train services:", error)
@@ -277,6 +306,59 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
           </div>
 
           <div className="space-y-4">
+            {/* Optional From Station */}
+            <div>
+              <Label className="text-muted-foreground font-semibold mb-2 block">From Station (optional)</Label>
+              <Input
+                placeholder="Search station name or code..."
+                value={fromStationSearch}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setFromStationSearch(v)
+                  if (v.trim() === "") {
+                    setSelectedFromStation(null)
+                  }
+                }}
+                className="border-gray-300"
+              />
+              {selectedFromStation && (
+                <p className="text-xs text-muted-foreground mt-1">Selected: {selectedFromStation.stationName} ({selectedFromStation.crsCode})</p>
+              )}
+            </div>
+
+            {/* From Station suggestions */}
+            {fromStationSearch && (
+              <div className="relative">
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {filteredFromStations.length > 0 ? (
+                    filteredFromStations.map((station) => (
+                      <Card
+                        key={`from-${station.crsCode}`}
+                        onClick={() => { setSelectedFromStation(station); setFromStationSearch(`${station.stationName} (${station.crsCode})`) }}
+                        className="p-3 mr-2 border border-gray-200 cursor-pointer hover:bg-muted transition-all"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-semibold text-foreground">{station.stationName}</h3>
+                            <p className="text-sm text-muted-foreground">{station.crsCode}</p>
+                          </div>
+                        </div>
+                      </Card>
+                    ))
+                  ) : (
+                    <>
+                      {!selectedFromStation && (
+                        <p className="text-center text-muted-foreground py-2">No stations found</p>
+                      )}
+                    </>
+                  )}
+                </div>
+                {!selectedFromStation && (
+                  <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+                )}
+              </div>
+            )}
+
             <div>
               <Label className="text-muted-foreground font-semibold mb-2 block">Train Station</Label>
               <Input
@@ -339,7 +421,12 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
             <p className="text-sm text-muted-foreground dark:text-background">
-              <span className="font-semibold">{selectedStation.stationName} ({selectedStation.crsCode})</span>
+              {selectedFromStation 
+              ? (
+                <span className="font-semibold">{selectedFromStation.crsCode} → {selectedStation.crsCode}</span>
+              ) : (
+                <span className="font-semibold">{selectedStation.stationName} ({selectedStation.crsCode})</span>
+              )}
             </p>
           </div>
 

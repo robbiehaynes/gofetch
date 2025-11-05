@@ -133,7 +133,7 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
 
   return (
     <Card
-      className={`my-4 p-6 rounded-xl border-0 ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
+      className={`my-4 p-6 rounded-xl border-0 shadow-md ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
