@@ -1,24 +1,52 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Plane, Train, MapPin } from "lucide-react"
+import { MapDirectionsButton } from "@/components/maps-direction-button"
+
+interface Coordinates {
+  latitude: number
+  longitude: number
+}
 
 interface PickupCardProps {
   pickup: {
+    id: string
     type: "flight" | "train"
     location: string
+    locationCode: string
+    locationCoords: Coordinates
     scheduledArrival: number
     currentDelay: number
+    userCoords: Coordinates
+    travelTime: number
+    buffer: number
     passengerName?: string
-    origin?: string,
+    origin?: string
     platform?: string
     operator?: string
   }
-  departureTime: number | null
-  timeUntilDeparture: number | null
+  isActive: boolean
+  settings: {
+    notificationsEnabled: boolean
+    updateFrequency: number
+    localOnlyMode: boolean
+  }
+  onBufferUpdate: (pickupId: string, newBuffer: number) => void
+  lastUpdated: Date | null
+  isUpdating: boolean
 }
 
-export function PickupCard({ pickup, departureTime, timeUntilDeparture }: PickupCardProps) {
+export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpdated, isUpdating }: PickupCardProps) {
+  const [departureTime, setDepartureTime] = useState<number | null>(null)
+  const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
+  const [notificationShown, setNotificationShown] = useState(false)
+  const [isEditingBuffer, setIsEditingBuffer] = useState(false)
+  const [bufferInput, setBufferInput] = useState("")
+
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
     const hours = Math.floor(totalSeconds / 3600)
@@ -36,11 +64,76 @@ export function PickupCard({ pickup, departureTime, timeUntilDeparture }: Pickup
     return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })
   }
 
+  const getLastUpdatedText = () => {
+    if (isUpdating) return "Updating..."
+    if (!lastUpdated) return ""
+    const diffMs = Date.now() - lastUpdated.getTime()
+    const diffMin = Math.floor(diffMs / 60000)
+    if (diffMin < 1) return "Last Updated: Now"
+    return `Last Updated: ${diffMin} min ago`
+  }
+
+  const handleUpdateBuffer = () => {
+    if (!bufferInput) return
+    const newBuffer = parseInt(bufferInput)
+    if (isNaN(newBuffer) || newBuffer < 0) return
+    onBufferUpdate(pickup.id, newBuffer)
+    setIsEditingBuffer(false)
+  }
+
+  // Combined time calculations and countdown effect (only when active)
+  useEffect(() => {
+    if (!isActive) return
+
+    // Reset states when pickup becomes active
+    setNotificationShown(false)
+    
+    // Calculate departure time
+    const calculateDepartureTime = () => {
+      const adjustedArrival = pickup.scheduledArrival + pickup.currentDelay * 60000
+      return adjustedArrival - pickup.travelTime * 60000 - pickup.buffer * 60000
+    }
+
+    // Update countdown
+    const updateCountdown = () => {
+      const departureTime = calculateDepartureTime()
+      setDepartureTime(departureTime)
+      
+      const now = Date.now()
+      const timeLeft = departureTime - now
+
+      if (timeLeft <= 0) {
+        setTimeUntilDeparture(0)
+        // Only show notification if we haven't shown it yet and notifications are enabled
+        if (!notificationShown && settings.notificationsEnabled) {
+          if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("GoFetch", {
+              body: `Leave now to arrive ${pickup.buffer} minutes before the ${new Date(pickup.scheduledArrival).toLocaleTimeString()} train from ${pickup.origin} gets in at ${pickup.location}`,
+              icon: "/car-driving.webp",
+            })
+            // Mark notification as shown immediately after showing it
+            setNotificationShown(true)
+          }
+        }
+      } else {
+        setTimeUntilDeparture(timeLeft)
+      }
+    }
+
+    // Initial countdown update
+    updateCountdown()
+
+    // Set up interval for countdown updates
+    const countdownInterval = setInterval(updateCountdown, 1000)
+
+    return () => clearInterval(countdownInterval)
+  }, [isActive, pickup, settings.notificationsEnabled])
+
   const isTimeToLeave = timeUntilDeparture !== null && timeUntilDeparture <= 0
 
   return (
     <Card
-      className={`mt-4 p-6 rounded-t-xl rounded-b-none border-0 ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
+      className={`my-4 p-6 rounded-xl border-0 ${isTimeToLeave ? "bg-gradient-to-br from-red-50 to-orange-50" : "bg-gradient-to-br from-blue-50 to-indigo-50"}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
@@ -112,6 +205,90 @@ export function PickupCard({ pickup, departureTime, timeUntilDeparture }: Pickup
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600 mb-2">Time until departure</p>
           <p className="text-2xl font-bold text-blue-600">{formatTime(timeUntilDeparture)}</p>
+        </div>
+      )}
+
+      {/* Status Info - Only show when active */}
+      {isActive && (
+        <div className="mt-6 pt-6 border-t-2 border-gray-200 space-y-4">
+          {pickup.currentDelay > 0 && (
+            <div className="pb-4 border-b border-gray-200">
+              <p className="text-sm text-gray-600 mb-1">Current Delay</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {pickup.currentDelay > 0 ? `+${pickup.currentDelay}` : pickup.currentDelay} min
+              </p>
+            </div>
+          )}
+          
+          <div className="pb-4 border-b border-gray-200">
+            <p className="text-sm text-gray-600 mb-1">Live Travel Time</p>
+            <p className="text-lg font-semibold text-gray-900 mb-2">{pickup.travelTime} minutes</p>
+            <MapDirectionsButton
+              origin={pickup.userCoords}
+              destination={pickup.locationCoords}
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Safety Buffer</p>
+                {isEditingBuffer ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={bufferInput}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBufferInput(e.target.value)}
+                      className="w-20 h-8"
+                      autoFocus
+                      onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                        if (e.key === 'Enter') {
+                          handleUpdateBuffer()
+                        }
+                        if (e.key === 'Escape') {
+                          setIsEditingBuffer(false)
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-gray-600">minutes</span>
+                  </div>
+                ) : (
+                  <p className="text-lg font-semibold text-gray-900">{pickup.buffer} minutes</p>
+                )}
+              </div>
+              <div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    if (!isEditingBuffer) {
+                      setBufferInput(pickup.buffer.toString())
+                    }
+                    setIsEditingBuffer(!isEditingBuffer)
+                  }}
+                >
+                  {isEditingBuffer ? "Cancel" : "Edit"}
+                </Button>
+                {isEditingBuffer && (
+                  <Button
+                    variant="default"
+                    className="ml-2"
+                    size="sm"
+                    onClick={handleUpdateBuffer}
+                  >
+                    Save
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="mt-2">
+              <p className="text-sm text-gray-500 text-wrap">This buffer is added to ensure you arrive early. Adjust as needed.</p>
+            </div>
+          </div>
+
+          <div className="w-full flex justify-center pt-2">
+            <span className="text-xs text-gray-500">{getLastUpdatedText()}</span>
+          </div>
         </div>
       )}
     </Card>

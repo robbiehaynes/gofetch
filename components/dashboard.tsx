@@ -3,12 +3,9 @@
 import { useState, useEffect } from "react"
 import { setOptions } from "@googlemaps/js-api-loader";
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { PickupCard } from "@/components/pickup-card"
 import { AddPickupForm } from "@/components/add-pickup-form"
 import { Plus, Check, Trash2 } from "lucide-react"
-import { MapDirectionsButton } from "@/components/maps-direction-button";
 import {
   Carousel,
   CarouselContent,
@@ -47,13 +44,8 @@ export function Dashboard() {
   const [pickups, setPickups] = useState<Pickup[]>([])
   const [activePickup, setActivePickup] = useState<Pickup | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
-  const [departureTime, setDepartureTime] = useState<number | null>(null)
-  const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
-  const [notificationShown, setNotificationShown] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date())
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isEditingBuffer, setIsEditingBuffer] = useState(false)
-  const [bufferInput, setBufferInput] = useState("")
   const [settings, setSettings] = useState({
     notificationsEnabled: true,
     updateFrequency: 1,
@@ -158,15 +150,6 @@ export function Dashboard() {
     }
   }
 
-  const getLastUpdatedText = () => {
-    if (isUpdating) return "Updating..."
-    if (!lastUpdated) return ""
-    const diffMs = Date.now() - lastUpdated.getTime()
-    const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return "Last Updated: Now"
-    return `Last Updated: ${diffMin} min ago`
-  }
-
   // Refresh active pickup details every minute
   useEffect(() => {
     if (!activePickup || activePickup.type !== 'train') return
@@ -177,54 +160,6 @@ export function Dashboard() {
     }, settings.updateFrequency * 60000) // Convert minutes to milliseconds
 
     return () => clearInterval(interval)
-  }, [activePickup])
-
-  // Combined time calculations and countdown effect
-  useEffect(() => {
-    if (!activePickup) return
-
-    // Reset states when active pickup changes
-    setNotificationShown(false)
-    
-    // Calculate initial departure time
-    const calculateDepartureTime = () => {
-      const adjustedArrival = activePickup.scheduledArrival + activePickup.currentDelay * 60000
-      return adjustedArrival - activePickup.travelTime * 60000 - activePickup.buffer * 60000
-    }
-
-    // Set initial departure time
-    const initialDeparture = calculateDepartureTime()
-    setDepartureTime(initialDeparture)
-
-    // Update countdown
-    const updateCountdown = () => {
-      const now = Date.now()
-      const timeLeft = initialDeparture - now
-
-      if (timeLeft <= 0) {
-        setTimeUntilDeparture(0)
-        if (!notificationShown && settings.notificationsEnabled) {
-          // Show notification
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification("GoFetch", {
-              body: `Leave now to arrive ${activePickup.buffer} minutes before the ${new Date(activePickup.scheduledArrival).toLocaleTimeString()} train from ${activePickup.origin} gets in at ${activePickup.location}`,
-              icon: "/car-driving.webp",
-            })
-          }
-          setNotificationShown(true)
-        }
-      } else {
-        setTimeUntilDeparture(timeLeft)
-      }
-    }
-
-    // Initial countdown update
-    updateCountdown()
-
-    // Set up interval for countdown updates
-    const countdownInterval = setInterval(updateCountdown, 1000)
-
-    return () => clearInterval(countdownInterval)
   }, [activePickup])
 
   // Handle carousel selection
@@ -252,25 +187,21 @@ export function Dashboard() {
     }
   }
 
-  const handleUpdateBuffer = () => {
-    if (!activePickup || !bufferInput) return
-
-    const newBuffer = parseInt(bufferInput)
-    if (isNaN(newBuffer) || newBuffer < 0) return
-
+  const handleUpdateBuffer = (pickupId: string, newBuffer: number) => {
     // Update in localStorage
     const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
     const updated = storedPickups.map((p: Pickup) =>
-      p.id === activePickup.id ? { ...p, buffer: newBuffer } : p
+      p.id === pickupId ? { ...p, buffer: newBuffer } : p
     )
     localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
 
     // Update state
     setPickups(pickups.map(p =>
-      p.id === activePickup.id ? { ...p, buffer: newBuffer } : p
+      p.id === pickupId ? { ...p, buffer: newBuffer } : p
     ))
-    setActivePickup({ ...activePickup, buffer: newBuffer })
-    setIsEditingBuffer(false)
+    if (activePickup?.id === pickupId) {
+      setActivePickup({ ...activePickup, buffer: newBuffer })
+    }
   }
 
   const handleDeletePickup = () => {
@@ -306,8 +237,6 @@ export function Dashboard() {
                 , null)
                 if (latestPickup) {
                   setActivePickup(latestPickup)
-                  setTimeUntilDeparture(null)
-                  setNotificationShown(false)
                 }
               }
             }}
@@ -339,7 +268,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen pt-8 px-4 pb-24">
-      <div className="max-w-lg mx-auto">
+      <div className="max-w-sm md:max-w-lg mx-auto">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-foreground">GoFetch</h1>
@@ -347,109 +276,38 @@ export function Dashboard() {
         </div>
 
         {/* Main Pickup Card */}
-        <Carousel 
-          setApi={setApi}
-          className="basis-1/3"
-        >
-          <CarouselContent>
-            {pickups.map((pickup) => (
-              <CarouselItem key={pickup.id}>
-                <PickupCard 
-                  pickup={pickup.id === activePickup.id ? activePickup : pickup} 
-                  departureTime={pickup.id === activePickup.id ? departureTime : null} 
-                  timeUntilDeparture={pickup.id === activePickup.id ? timeUntilDeparture : null} 
-                />
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-          {pickups.length > 1 && (
-            <>
-              <CarouselPrevious />
-              <CarouselNext />
-            </>
-          )}
-        </Carousel>
-
-        {/* Status Info */}
-        <Card className="mb-4 p-6 border-0 rounded-t-none rounded-b-xl shadow-lg bg-background dark:bg-stone-900">
-          <div className="space-y-4">
-            {activePickup.currentDelay > 0 && (
-              <div className="pb-4 border-b border-gray-200">
-                <p className="text-sm text-muted-foreground mb-1">Current Delay</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {activePickup.currentDelay > 0 ? `+${activePickup.currentDelay}` : activePickup.currentDelay} min
-                </p>
-              </div>
-            )}
-            <div className="pb-4 border-b border-gray-200">
-              <p className="text-sm text-muted-foreground mb-1">Live Travel Time</p>
-              <p className="text-lg font-semibold text-foreground mb-2">{activePickup.travelTime} minutes</p>
-              <MapDirectionsButton
-                origin={activePickup.userCoords}
-                destination={activePickup.locationCoords}
-              />
-            </div>
-            <div className="">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Safety Buffer</p>
-                  {isEditingBuffer ? (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        value={bufferInput}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBufferInput(e.target.value)}
-                        className="w-20 h-8"
-                        autoFocus
-                        onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                          if (e.key === 'Enter') {
-                            handleUpdateBuffer()
-                          }
-                          if (e.key === 'Escape') {
-                            setIsEditingBuffer(false)
-                          }
-                        }}
-                      />
-                      <span className="text-sm text-muted-foreground">minutes</span>
-                    </div>
-                  ) : (
-                    <p className="text-lg font-semibold text-foreground">{activePickup.buffer} minutes</p>
-                  )}
-                </div>
-                <div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      if (!isEditingBuffer) {
-                        setBufferInput(activePickup.buffer.toString())
-                      }
-                      setIsEditingBuffer(!isEditingBuffer)
-                    }}
-                  >
-                    {isEditingBuffer ? "Cancel" : "Edit"}
-                  </Button>
-                  {isEditingBuffer && (
-                    <Button
-                      variant="default"
-                      className="ml-2"
-                      size="sm"
-                      onClick={handleUpdateBuffer}
-                    >
-                      Save
-                    </Button>
-                  )}
-                </div>
-              </div>
-              <div className="mt-2">
-                <p className="text-sm text-gray-500">This buffer is added to ensure you arrive early. Adjust as needed.</p>
-              </div>
-            </div>
-            <div className="w-full flex justify-center pt-2">
-              <span className="text-xs text-gray-500">{getLastUpdatedText()}</span>
-            </div>
-          </div>
-        </Card>
+        {pickups.length === 1 ? (
+          <PickupCard 
+            pickup={activePickup}
+            isActive={true}
+            settings={settings}
+            onBufferUpdate={handleUpdateBuffer}
+            lastUpdated={lastUpdated}
+            isUpdating={isUpdating}
+          />
+        ) : (
+          <Carousel 
+            setApi={setApi}
+            className="basis-1/3"
+          >
+            <CarouselContent>
+              {pickups.map((pickup) => (
+                <CarouselItem key={pickup.id}>
+                  <PickupCard 
+                    pickup={pickup.id === activePickup.id ? activePickup : pickup}
+                    isActive={pickup.id === activePickup.id}
+                    settings={settings}
+                    onBufferUpdate={handleUpdateBuffer}
+                    lastUpdated={lastUpdated}
+                    isUpdating={isUpdating}
+                  />
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
+        )}
 
         {/* Actions */}
         <div className="space-y-3">
