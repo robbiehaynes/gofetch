@@ -8,6 +8,14 @@ export function Hero() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         {/* Left Column - Text Content */}
         <div className="flex flex-col gap-6">
+          <Image 
+            src="/logo.png"
+            alt="GoFetch Logo"
+            quality={100}
+            width={256}
+            height={281}
+            className="object-fit"
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
             Smart timing for every pickup.
           </h1>

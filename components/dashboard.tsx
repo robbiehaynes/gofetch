@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react"
+import Image from "next/image";
 import { setOptions } from "@googlemaps/js-api-loader";
 import { Button } from "@/components/ui/button"
 import { PickupCard } from "@/components/pickup-card"
@@ -413,7 +414,13 @@ export function Dashboard() {
       <div className="max-w-[90vw] md:max-w-lg mx-auto">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-foreground">GoFetch</h1>
+          <Image 
+            src="/logo.png"
+            alt="GoFetch Logo"
+            width={200}
+            height={200}
+            className="object-fit mb-2"
+          />
           <p className="text-muted-foreground">Active Pickup {pickups.length > 1 && `(${pickups.indexOf(activePickup) + 1}/${pickups.length})`}</p>
         </div>
 
