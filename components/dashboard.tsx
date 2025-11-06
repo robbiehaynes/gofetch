@@ -14,6 +14,7 @@ import {
   CarouselPrevious,
   type CarouselApi
 } from "@/components/ui/carousel"
+import { Spinner } from "@/components/ui/spinner";
 import NavDock from "@/components/NavDock";
 
 interface Coordinates {
@@ -25,16 +26,18 @@ interface Pickup {
   type: "flight" | "train"
   location: string
   locationCode: string
-  locationCoords: Coordinates
-  scheduledArrival: number
-  currentDelay: number
-  userCoords: Coordinates
-  travelTime: number
-  buffer: number
   completed: boolean
   createdAt: number
-  passengerName?: string
-  origin?: string,
+}
+// Runtime-only details we derive client-side
+interface PickupRuntime {
+  locationCoords?: Coordinates
+  userCoords?: Coordinates
+  buffer: number
+  scheduledArrival: number
+  currentDelay: number
+  travelTime: number
+  origin?: string
   platform?: string
   operator?: string
 }
@@ -42,10 +45,14 @@ interface Pickup {
 export function Dashboard() {
   const [api, setApi] = useState<CarouselApi>()
   const [pickups, setPickups] = useState<Pickup[]>([])
+  const [activeDetails, setActiveDetails] = useState<PickupRuntime | null>(null)
   const [activePickup, setActivePickup] = useState<Pickup | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(new Date())
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isLoadingPickups, setIsLoadingPickups] = useState(true)
+  const [isCompletingPickup, setIsCompletingPickup] = useState(false)
+  const [isDeletingPickup, setIsDeletingPickup] = useState(false)
   const [settings, setSettings] = useState({
     notificationsEnabled: true,
     updateFrequency: 1,
@@ -67,16 +74,42 @@ export function Dashboard() {
       setSettings(JSON.parse(storedSettings))
     }
 
-    // Load active pickups
-    const storedPickups = localStorage.getItem("gofetch_pickups")
-    if (storedPickups) {
-      const parsed = JSON.parse(storedPickups)
-      const activePickups = parsed.filter((p: any) => !p.completed)
-      setPickups(activePickups)
-      if (activePickups.length > 0) {
-        setActivePickup(activePickups[0])
+    // Load active pickups from API
+    const loadPickups = async () => {
+      setIsLoadingPickups(true)
+      try {
+        const res = await fetch('/api/pickups', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Failed to load pickups')
+        const json = await res.json()
+        const all = json.data || []
+        const activePickups = all.filter((p: any) => !p.completed)
+        setPickups(activePickups)
+        if (activePickups.length > 0) {
+          const first = activePickups[0]
+          setActivePickup(first)
+          // Seed active details from localStorage
+          const buffers = JSON.parse(localStorage.getItem('gofetch_buffers') || '{}')
+          const coords = JSON.parse(localStorage.getItem('gofetch_coords') || '{}')
+          const seed: PickupRuntime = {
+            buffer: buffers[first.id] ?? 5,
+            scheduledArrival: Date.now(),
+            currentDelay: 0,
+            travelTime: 0,
+            ...(coords[first.id] || {})
+          }
+          setActiveDetails(seed)
+          // Kick off initial details refresh
+          setTimeout(() => {
+            refreshTrainDetails(first, seed)
+          }, 0)
+        }
+      } catch (e) {
+        console.error('Error loading pickups:', e)
+      } finally {
+        setIsLoadingPickups(false)
       }
     }
+    loadPickups()
 
     // Listen for settings updates
     const handleSettingsUpdate = (event: CustomEvent) => {
@@ -90,7 +123,8 @@ export function Dashboard() {
     }
   }, [])
 
-  const refreshTrainDetails = async (pickup: Pickup) => {
+  // Load/refresh live details for a pickup (times, travel time) without persisting
+  const refreshTrainDetails = async (pickup: Pickup, details?: PickupRuntime | null) => {
     setIsUpdating(true)
     try {
       const response = await fetch(`/api/trains/details?station=${pickup.locationCode}&stationName=${pickup.location}&trainId=${pickup.id}`)
@@ -112,35 +146,36 @@ export function Dashboard() {
       const estimatedTime = parseTime(data.estimatedAt)
       const newDelay = Math.round((estimatedTime - scheduledTime) / 60000) // Convert to minutes
 
-      // Update travel time
-      const travelTimeResponse = await fetch('/api/travel-time', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          origin: activePickup?.userCoords,
-          destination: activePickup?.locationCoords
-        })
-      })
+      // Optionally compute travel time if we have coords
+      const rt = details ?? activeDetails
+      let newTravelTime = rt?.travelTime || 0 // preserve existing if not recomputed
+      if (rt?.userCoords && rt?.locationCoords) {
+        try {
+          const travelTimeResponse = await fetch('/api/travel-time', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ origin: rt.userCoords, destination: rt.locationCoords })
+          })
+          const travelTimeData = await travelTimeResponse.json()
+          newTravelTime = travelTimeData.duration || 0
+        } catch (e) {
+          console.warn('Travel time failed:', e)
+        }
+      }
 
-      const travelTimeData = await travelTimeResponse.json()
-      const newTravelTime = travelTimeData.duration
-      
-      // Update pickup in local storage and state
-      const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-      const updated = storedPickups.map((p: Pickup) =>
-        p.id === pickup.id ? { ...p, currentDelay: newDelay, travelTime: newTravelTime } : p
-      )
-      localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
-      
-      // Update active pickup and pickups list
-      setPickups(prev => prev.map(p =>
-        p.id === pickup.id ? { ...p, currentDelay: newDelay, travelTime: newTravelTime } : p
-      ))
-      if (pickup.id === activePickup?.id) {
-        const updatedPickup = { ...activePickup, currentDelay: newDelay, travelTime: newTravelTime };
-        setActivePickup(updatedPickup)
+      // Update active details only if this pickup is active
+      if (activePickup && pickup.id === activePickup.id) {
+        setActiveDetails(prev => ({
+          buffer: prev?.buffer ?? 5,
+          scheduledArrival: scheduledTime,
+          currentDelay: newDelay,
+          travelTime: newTravelTime,
+          userCoords: rt?.userCoords ?? prev?.userCoords,
+          locationCoords: rt?.locationCoords ?? prev?.locationCoords,
+          origin: prev?.origin,
+          platform: prev?.platform,
+          operator: prev?.operator,
+        }))
       }
       setLastUpdated(new Date())
     } catch (error) {
@@ -153,14 +188,13 @@ export function Dashboard() {
   // Refresh active pickup details every minute
   useEffect(() => {
     if (!activePickup || activePickup.type !== 'train') return
-
-    // Set up interval for periodic refreshes
+    // initial refresh with current details
+    refreshTrainDetails(activePickup, activeDetails)
     const interval = setInterval(() => {
-      refreshTrainDetails(activePickup)
-    }, settings.updateFrequency * 60000) // Convert minutes to milliseconds
-
+      refreshTrainDetails(activePickup, activeDetails)
+    }, settings.updateFrequency * 60000)
     return () => clearInterval(interval)
-  }, [activePickup])
+  }, [activePickup, activeDetails?.userCoords, activeDetails?.locationCoords, settings.updateFrequency])
 
   // Handle carousel selection
   useEffect(() => {
@@ -168,53 +202,133 @@ export function Dashboard() {
 
     api.on("select", () => {
       const newIndex = api.selectedScrollSnap()
-      setActivePickup(pickups[newIndex])
+      const next = pickups[newIndex]
+      setActivePickup(next)
+      // seed details for new active
+      const buffers = JSON.parse(localStorage.getItem('gofetch_buffers') || '{}')
+      const coords = JSON.parse(localStorage.getItem('gofetch_coords') || '{}')
+      const seed: PickupRuntime = {
+        buffer: buffers[next.id] ?? 5,
+        scheduledArrival: Date.now(),
+        currentDelay: 0,
+        travelTime: 0,
+        ...(coords[next.id] || {})
+      }
+      setActiveDetails(seed)
+      // refresh details for new active
+      setTimeout(() => refreshTrainDetails(next, seed), 0)
     })
   }, [api, pickups])
 
-  const handleCompletePickup = () => {
-    if (activePickup) {
-      const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-      const updated = storedPickups.map((p: any) => 
-        p.id === activePickup.id ? { ...p, completed: true } : p
-      )
-      localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
-      
-      // Update state
-      const newActivePickups = pickups.filter(p => p.id !== activePickup.id)
-      setPickups(newActivePickups)
-      setActivePickup(newActivePickups[0] || null)
+  const handleCompletePickup = async () => {
+    if (!activePickup) return
+    setIsCompletingPickup(true)
+    try {
+      await fetch(`/api/pickups?id=${activePickup.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: true })
+      })
+    } catch (e) {
+      console.error('Failed to complete pickup:', e)
+    } finally {
+      setIsCompletingPickup(false)
     }
-  }
-
-  const handleUpdateBuffer = (pickupId: string, newBuffer: number) => {
-    // Update in localStorage
-    const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-    const updated = storedPickups.map((p: Pickup) =>
-      p.id === pickupId ? { ...p, buffer: newBuffer } : p
-    )
-    localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
-
     // Update state
-    setPickups(pickups.map(p =>
-      p.id === pickupId ? { ...p, buffer: newBuffer } : p
-    ))
-    if (activePickup?.id === pickupId) {
-      setActivePickup({ ...activePickup, buffer: newBuffer })
+    const newActivePickups = pickups.filter(p => p.id !== activePickup.id)
+    setPickups(newActivePickups)
+    setActivePickup(newActivePickups[0] || null)
+  }
+
+  const handleUpdateBuffer = async (pickupId: string, newBuffer: number) => {
+    // Store buffer client-side only (no server persistence)
+    try {
+      const map = JSON.parse(localStorage.getItem('gofetch_buffers') || '{}')
+      map[pickupId] = newBuffer
+      localStorage.setItem('gofetch_buffers', JSON.stringify(map))
+    } catch {}
+    if (activePickup && pickupId === activePickup.id) {
+      setActiveDetails(prev => prev ? { ...prev, buffer: newBuffer } : { buffer: newBuffer, scheduledArrival: Date.now(), currentDelay: 0, travelTime: 0 })
     }
   }
 
-  const handleDeletePickup = () => {
-    if (activePickup) {
-      const storedPickups = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]")
-      const updated = storedPickups.filter((p: any) => p.id !== activePickup.id)
-      localStorage.setItem("gofetch_pickups", JSON.stringify(updated))
-      
-      // Update state
-      const newActivePickups = pickups.filter(p => p.id !== activePickup.id)
-      setPickups(newActivePickups)
-      setActivePickup(newActivePickups[0] || null)
+  const handleLocationUpdate = async (pickupId: string, userCoords: Coordinates, locationCoords: Coordinates) => {
+    // Store coords client-side and compute travel time
+    try {
+      const coordsMap = JSON.parse(localStorage.getItem('gofetch_coords') || '{}')
+      coordsMap[pickupId] = { userCoords, locationCoords }
+      localStorage.setItem('gofetch_coords', JSON.stringify(coordsMap))
+    } catch {}
+
+    // Compute travel time
+    let travelTime = 0
+    try {
+      const travelTimeResponse = await fetch('/api/travel-time', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin: userCoords, destination: locationCoords })
+      })
+      const travelTimeData = await travelTimeResponse.json()
+      travelTime = travelTimeData.duration || 0
+    } catch (e) {
+      console.warn('Travel time failed:', e)
     }
+
+    if (activePickup && pickupId === activePickup.id) {
+      setActiveDetails(prev => ({
+        buffer: prev?.buffer ?? 5,
+        scheduledArrival: prev?.scheduledArrival ?? Date.now(),
+        currentDelay: prev?.currentDelay ?? 0,
+        travelTime,
+        userCoords,
+        locationCoords,
+        origin: prev?.origin,
+        platform: prev?.platform,
+        operator: prev?.operator,
+      }))
+    }
+  }
+
+  const handleDeletePickup = async () => {
+    if (!activePickup) return
+    setIsDeletingPickup(true)
+    try {
+      await fetch(`/api/pickups?id=${activePickup.id}`, { method: 'DELETE' })
+
+      // Also remove stored coords and buffer
+      try {
+        const coordsMap = JSON.parse(localStorage.getItem('gofetch_coords') || '{}')
+        delete coordsMap[activePickup.id]
+        localStorage.setItem('gofetch_coords', JSON.stringify(coordsMap))
+      } catch {}
+      try {
+        const bufferMap = JSON.parse(localStorage.getItem('gofetch_buffers') || '{}')
+        delete bufferMap[activePickup.id]
+        localStorage.setItem('gofetch_buffers', JSON.stringify(bufferMap))
+      } catch {}
+    } catch (e) {
+      console.error('Failed to delete pickup:', e)
+    } finally {
+      setIsDeletingPickup(false)
+    }
+    // Update state
+    const newActivePickups = pickups.filter(p => p.id !== activePickup.id)
+    setPickups(newActivePickups)
+    setActivePickup(newActivePickups[0] || null)
+  }
+
+  // Safely merge active runtime-only details without overwriting server fields with undefined
+  const mergeActivePickup = (p: Pickup) => {
+    const d = activeDetails
+    return {
+      ...p,
+      buffer: d?.buffer ?? (p as any).buffer,
+      scheduledArrival: d?.scheduledArrival ?? (p as any).scheduledArrival,
+      currentDelay: d?.currentDelay ?? (p as any).currentDelay,
+      travelTime: d?.travelTime ?? (p as any).travelTime,
+      userCoords: d?.userCoords ?? (p as any).userCoords,
+      locationCoords: d?.locationCoords ?? (p as any).locationCoords,
+    } as any
   }
 
   if (showAddForm) {
@@ -223,29 +337,38 @@ export function Dashboard() {
         <div className="max-w-md mx-auto">
           <h2 className="text-2xl font-bold text-foreground mb-6">Add Another Pickup</h2>
           <AddPickupForm
-              onSuccess={() => {
+            onSuccess={async () => {
               setShowAddForm(false)
-              // Reload pickups
-              const storedPickups = localStorage.getItem("gofetch_pickups")
-              if (storedPickups) {
-                const parsed = JSON.parse(storedPickups)
-                const activePickups = parsed.filter((p: any) => !p.completed)
-                // Find the most recently added pickup (highest createdAt value)
-                const latestPickup = activePickups.reduce((latest: Pickup | null, pickup: Pickup) => 
-                  !latest || pickup.createdAt > latest.createdAt ? pickup : latest
-                , null)
-                
-                if (latestPickup) {
-                  // Move the latest pickup to the front of the array
-                  const reorderedPickups = [
-                    latestPickup,
-                    ...activePickups.filter((p: Pickup) => p.id !== latestPickup.id)
-                  ]
-                  setPickups(reorderedPickups)
-                  setActivePickup(latestPickup)
+              // Reload pickups from API, place the latest at index 0
+              try {
+                const res = await fetch('/api/pickups', { cache: 'no-store' })
+                if (!res.ok) throw new Error('Failed to reload pickups')
+                const json = await res.json()
+                const active = (json.data || []).filter((p: Pickup) => !p.completed)
+                // Find most recently created
+                const latest = active.reduce((acc: Pickup | null, p: Pickup) => !acc || p.createdAt > acc.createdAt ? p : acc, null)
+                if (latest) {
+                  const reordered = [latest, ...active.filter((p: Pickup) => p.id !== latest.id)]
+                  setPickups(reordered)
+                  setActivePickup(latest)
+                  // Seed runtime defaults
+                  const buffers = JSON.parse(localStorage.getItem('gofetch_buffers') || '{}')
+                  const coords = JSON.parse(localStorage.getItem('gofetch_coords') || '{}')
+                  setActiveDetails({
+                    buffer: buffers[latest.id] ?? 5,
+                    scheduledArrival: Date.now(),
+                    currentDelay: 0,
+                    travelTime: 0,
+                    ...(coords[latest.id] || {})
+                  })
+                  // trigger details refresh for latest
+                  setTimeout(() => refreshTrainDetails(latest), 0)
                 } else {
-                  setPickups(activePickups)
+                  setPickups(active)
+                  setActivePickup(active[0] || null)
                 }
+              } catch (e) {
+                console.error(e)
               }
             }}
             onCancel={() => setShowAddForm(false)}
@@ -259,15 +382,26 @@ export function Dashboard() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 pb-24">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pickups</h2>
-          <p className="text-muted-foreground mb-6">Create a new pickup to get started</p>
-          <Button
-            variant={"default"}
-            onClick={() => setShowAddForm(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Pickup
-          </Button>
+          {isLoadingPickups ? (
+            <>
+              <div className="items-center justify-center flex flex-col">
+                <Spinner className="mb-4" />
+                <h2 className="text-2xl font-bold text-foreground mb-2">Loading pickups...</h2>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-bold text-foreground mb-2">No Active Pickups</h2>
+              <p className="text-muted-foreground mb-6">Create a new pickup to get started</p>
+              <Button
+                variant={"default"}
+                onClick={() => setShowAddForm(true)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Pickup
+              </Button>
+            </>
+          )}
         </div>
         <NavDock />
       </div>
@@ -286,10 +420,11 @@ export function Dashboard() {
         {/* Main Pickup Card */}
         {pickups.length === 1 ? (
           <PickupCard 
-            pickup={activePickup}
+            pickup={mergeActivePickup(activePickup)}
             isActive={true}
             settings={settings}
             onBufferUpdate={handleUpdateBuffer}
+            onLocationUpdate={handleLocationUpdate}
             lastUpdated={lastUpdated}
             isUpdating={isUpdating}
           />
@@ -302,10 +437,11 @@ export function Dashboard() {
               {pickups.map((pickup) => (
                 <CarouselItem key={pickup.id}>
                   <PickupCard 
-                    pickup={pickup.id === activePickup.id ? activePickup : pickup}
+                    pickup={pickup.id === activePickup.id ? mergeActivePickup(activePickup) : pickup}
                     isActive={pickup.id === activePickup.id}
                     settings={settings}
                     onBufferUpdate={handleUpdateBuffer}
+                    onLocationUpdate={handleLocationUpdate}
                     lastUpdated={lastUpdated}
                     isUpdating={isUpdating}
                   />
@@ -332,15 +468,37 @@ export function Dashboard() {
               onClick={handleCompletePickup}
               variant="outline"
               className="w-full text-foreground bg-transparent"
+              disabled={isCompletingPickup || isDeletingPickup}
             >
-              <Check className="w-4 h-4" /> Complete Pickup
+              {isCompletingPickup ? (
+                <>
+                  <Spinner className="w-4 h-4 mr-2" />
+                  Completing...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Complete Pickup
+                </>
+              )}
             </Button>
             <Button
               onClick={handleDeletePickup}
               variant="outline"
               className="w-full text-foreground bg-transparent"
+              disabled={isDeletingPickup || isCompletingPickup}
             >
-              <Trash2 className="w-4 h-4" /> Delete Pickup
+              {isDeletingPickup ? (
+                <>
+                  <Spinner className="w-4 h-4 mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Pickup
+                </>
+              )}
             </Button>
           </div>
           

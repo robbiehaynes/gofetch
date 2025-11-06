@@ -4,8 +4,12 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plane, Train, MapPin } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
+import { Plane, Train, MapPin, Pin, Check } from "lucide-react"
 import { MapDirectionsButton } from "@/components/maps-direction-button"
+import PlacesAutocomplete from "@/components/autocomplete-input"
+import AllStationsJSON from "uk-railway-stations"
 
 interface Coordinates {
   latitude: number
@@ -18,13 +22,12 @@ interface PickupCardProps {
     type: "flight" | "train"
     location: string
     locationCode: string
-    locationCoords: Coordinates
-    scheduledArrival: number
-    currentDelay: number
-    userCoords: Coordinates
-    travelTime: number
-    buffer: number
-    passengerName?: string
+    locationCoords?: Coordinates
+    scheduledArrival?: number
+    currentDelay?: number
+    userCoords?: Coordinates
+    travelTime?: number
+    buffer?: number
     origin?: string
     platform?: string
     operator?: string
@@ -36,16 +39,21 @@ interface PickupCardProps {
     localOnlyMode: boolean
   }
   onBufferUpdate: (pickupId: string, newBuffer: number) => void
+  onLocationUpdate?: (pickupId: string, userCoords: Coordinates, locationCoords: Coordinates) => void
   lastUpdated: Date | null
   isUpdating: boolean
 }
 
-export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpdated, isUpdating }: PickupCardProps) {
+export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocationUpdate, lastUpdated, isUpdating }: PickupCardProps) {
   const [departureTime, setDepartureTime] = useState<number | null>(null)
   const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
   const [notificationShown, setNotificationShown] = useState(false)
   const [isEditingBuffer, setIsEditingBuffer] = useState(false)
   const [bufferInput, setBufferInput] = useState("")
+  const [isSettingLocation, setIsSettingLocation] = useState(false)
+  const [userLocation, setUserLocation] = useState("")
+  const [userCoordsTemp, setUserCoordsTemp] = useState<Coordinates | null>(null)
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false)
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -81,6 +89,46 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
     setIsEditingBuffer(false)
   }
 
+  const handleUseCurrentLocation = async () => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) return
+    try {
+      setIsLoadingLocation(true)
+      const coords: Coordinates = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 10000 }
+        )
+      })
+      setUserCoordsTemp(coords)
+    } catch (error) {
+      console.error('Failed to get current location:', error)
+    } finally {
+      setIsLoadingLocation(false)
+    }
+  }
+
+  const handleSaveLocation = () => {
+    if (!userCoordsTemp || !pickup.locationCode) return
+    
+    // Get station coordinates from the dataset
+    const stationData = AllStationsJSON.find(s => s.crsCode === pickup.locationCode)
+    if (!stationData) return
+
+    const locationCoords = {
+      latitude: stationData.lat,
+      longitude: stationData.long
+    }
+
+    if (onLocationUpdate) {
+      onLocationUpdate(pickup.id, userCoordsTemp, locationCoords)
+    }
+    
+    setIsSettingLocation(false)
+    setUserLocation("")
+    setUserCoordsTemp(null)
+  }
+
   // Combined time calculations and countdown effect (only when active)
   useEffect(() => {
     if (!isActive) return
@@ -90,8 +138,13 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
     
     // Calculate departure time
     const calculateDepartureTime = () => {
-      const adjustedArrival = pickup.scheduledArrival + pickup.currentDelay * 60000
-      return adjustedArrival - pickup.travelTime * 60000 - pickup.buffer * 60000
+      const scheduledArrival = pickup.scheduledArrival ?? 0
+      const currentDelay = pickup.currentDelay ?? 0
+      const travelTime = pickup.travelTime ?? 0
+      const buffer = pickup.buffer ?? 10
+      if (!scheduledArrival) return 0
+      const adjustedArrival = scheduledArrival + currentDelay * 60000
+      return adjustedArrival - travelTime * 60000 - buffer * 60000
     }
 
     // Update countdown
@@ -108,7 +161,7 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
         if (!notificationShown && settings.notificationsEnabled) {
           if ("Notification" in window && Notification.permission === "granted") {
             new Notification("GoFetch", {
-              body: `Leave now to arrive ${pickup.buffer} minutes before the ${new Date(pickup.scheduledArrival).toLocaleTimeString()} train from ${pickup.origin} gets in at ${pickup.location}`,
+              body: `Leave now to arrive ${(pickup.buffer ?? 10)} minutes before the ${pickup.scheduledArrival ? new Date(pickup.scheduledArrival).toLocaleTimeString() : "arrival"} train to ${pickup.location}`,
               icon: "/car-driving.webp",
             })
             // Mark notification as shown immediately after showing it
@@ -154,19 +207,13 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
       <div className="flex items-center gap-2 mb-6 pb-6 border-b border-gray-200">
         <MapPin className="w-5 h-5 text-gray-600" />
         <div>
-          <p className="text-sm text-gray-600">Pickup Location</p>
+            <p className="text-sm text-gray-600">Pickup Location</p>
           <p className="font-semibold text-gray-900">{pickup.location}</p>
-          <p className="text-sm text-gray-600">Platform {pickup.platform === null ? "N/A" : pickup.platform}</p>
+          {pickup.platform !== undefined && (
+            <p className="text-sm text-gray-600">Platform {pickup.platform === null ? "N/A" : pickup.platform}</p>
+          )}
         </div>
       </div>
-
-      {/* Passenger Name */}
-      {pickup.passengerName && (
-        <div className="mb-6 pb-6 border-b border-gray-200">
-          <p className="text-sm text-gray-600 mb-1">Passenger</p>
-          <p className="font-semibold text-gray-900">{pickup.passengerName}</p>
-        </div>
-      )}
 
       {/* Arrival Time */}
       <div className="mb-6 pb-6 border-b border-gray-200">
@@ -174,7 +221,7 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
         <div className="flex items-baseline gap-10">
           <div>
             <p className="text-sm text-gray-500 mb-1">Scheduled</p>
-            <p className="text-lg font-semibold text-gray-900">{formatTimeOfDay(pickup.scheduledArrival)}</p>
+            <p className="text-lg font-semibold text-gray-900">{pickup.scheduledArrival ? formatTimeOfDay(pickup.scheduledArrival) : "—"}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500 mb-1">Expected</p>
@@ -182,7 +229,9 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
               <p className="text-lg font-semibold text-green-600">On time</p>
             ) : (
               <p className="text-lg font-semibold text-orange-600">
-                {formatTimeOfDay(pickup.scheduledArrival + (pickup.currentDelay * 60000))}
+                {pickup.scheduledArrival !== undefined && pickup.currentDelay !== undefined
+                  ? formatTimeOfDay(pickup.scheduledArrival + (pickup.currentDelay * 60000))
+                  : "—"}
               </p>
             )}
           </div>
@@ -211,22 +260,116 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
       {/* Status Info - Only show when active */}
       {isActive && (
         <div className="mt-6 pt-6 border-t-2 border-gray-200 space-y-4">
-          {pickup.currentDelay > 0 && (
+          {pickup.currentDelay !== undefined && pickup.currentDelay > 0 && (
             <div className="pb-4 border-b border-gray-200">
               <p className="text-sm text-gray-600 mb-1">Current Delay</p>
               <p className="text-2xl font-bold text-gray-900">
-                {pickup.currentDelay > 0 ? `+${pickup.currentDelay}` : pickup.currentDelay} min
+                {(pickup.currentDelay ?? 0) > 0 ? `+${pickup.currentDelay}` : (pickup.currentDelay ?? 0)} min
               </p>
             </div>
           )}
           
           <div className="pb-4 border-b border-gray-200">
-            <p className="text-sm text-gray-600 mb-1">Live Travel Time</p>
-            <p className="text-lg font-semibold text-gray-900 mb-2">{pickup.travelTime} minutes</p>
-            <MapDirectionsButton
-              origin={pickup.userCoords}
-              destination={pickup.locationCoords}
-            />
+            {isSettingLocation ? (
+              <div className="space-y-3 mt-2">
+                <Label className="text-sm text-gray-600">Where are you leaving from?</Label>
+                {typeof window !== 'undefined' && 'geolocation' in navigator && (
+                  <Button
+                    onClick={handleUseCurrentLocation}
+                    variant="outline"
+                    className="w-full"
+                    disabled={isLoadingLocation}
+                    size="sm"
+                  >
+                    {isLoadingLocation ? (
+                      <>
+                        <Spinner className="w-3 h-3 mr-2" /> Finding location...
+                      </>
+                    ) : userCoordsTemp ? 
+                      (<>
+                        <Check className="w-3 h-3 mr-2" /> Using current location
+                      </>) :
+                      (<>
+                        <Pin className="w-3 h-3 mr-2" /> Use current location
+                      </>)}
+                  </Button>
+                )}
+                {userCoordsTemp ? (
+                  <p className="text-xs text-gray-500">Location: {userCoordsTemp.latitude.toFixed(4)}, {userCoordsTemp.longitude.toFixed(4)}</p>
+                ) : (
+                  <div>
+                    <PlacesAutocomplete
+                      value={userLocation}
+                      onChangeAction={(v: string) => { setUserLocation(v); }}
+                      onSelectAction={(place) => {
+                        setUserLocation(place.address)
+                        if (place.location) {
+                          setUserCoordsTemp(place.location)
+                        }
+                      }}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Enter your address</p>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSaveLocation}
+                    disabled={!userCoordsTemp}
+                    className="flex-1"
+                  >
+                    Save Location
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsSettingLocation(false)
+                      setUserLocation("")
+                      setUserCoordsTemp(null)
+                    }}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (pickup.travelTime !== undefined && pickup.userCoords && pickup.locationCoords) ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Live Travel Time</p>
+                    <p className="text-lg font-semibold text-gray-900">{pickup.travelTime} minutes</p>
+                  </div>
+                  <div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsSettingLocation(true)}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <MapDirectionsButton
+                    origin={pickup.userCoords}
+                    destination={pickup.locationCoords}
+                  />
+                </div>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSettingLocation(true)}
+                className="w-full"
+              >
+                <Pin className="w-3 h-3 mr-2" />
+                Set Your Location
+              </Button>
+            )}
           </div>
 
           <div>
@@ -262,8 +405,8 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, lastUpd
                   size="sm"
                   onClick={() => {
                     if (!isEditingBuffer) {
-                      setBufferInput(pickup.buffer.toString())
-                    }
+                        setBufferInput((pickup.buffer ?? 10).toString())
+                      }
                     setIsEditingBuffer(!isEditingBuffer)
                   }}
                 >
