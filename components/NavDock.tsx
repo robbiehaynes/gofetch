@@ -193,12 +193,12 @@ export default function NavDock() {
     refreshPickupCounts();
   }, []);
 
-  // Recompute counts whenever the Settings drawer is opened
+  // Recompute counts whenever the Account drawer is opened
   useEffect(() => {
-    if (isSettingsDrawerOpen) {
+    if (isAccountDrawerOpen) {
       refreshPickupCounts();
     }
-  }, [isSettingsDrawerOpen]);
+  }, [isAccountDrawerOpen]);
 
   const refreshPickupCounts = async () => {
     try {
