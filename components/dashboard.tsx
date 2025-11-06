@@ -230,13 +230,21 @@ export function Dashboard() {
               if (storedPickups) {
                 const parsed = JSON.parse(storedPickups)
                 const activePickups = parsed.filter((p: any) => !p.completed)
-                setPickups(activePickups)
                 // Find the most recently added pickup (highest createdAt value)
                 const latestPickup = activePickups.reduce((latest: Pickup | null, pickup: Pickup) => 
                   !latest || pickup.createdAt > latest.createdAt ? pickup : latest
                 , null)
+                
                 if (latestPickup) {
+                  // Move the latest pickup to the front of the array
+                  const reorderedPickups = [
+                    latestPickup,
+                    ...activePickups.filter((p: Pickup) => p.id !== latestPickup.id)
+                  ]
+                  setPickups(reorderedPickups)
                   setActivePickup(latestPickup)
+                } else {
+                  setPickups(activePickups)
                 }
               }
             }}
