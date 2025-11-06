@@ -21,12 +21,12 @@ type Suggestion = {
 
 export default function PlacesAutocomplete({
   value,
-  onChange,
-  onSelect
+  onChangeAction,
+  onSelectAction
 }: {
   value: string
-  onChange: (v: string) => void
-  onSelect: (place: Place) => void
+  onChangeAction: (v: string) => void
+  onSelectAction: (place: Place) => void
 }) {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(false)
@@ -77,26 +77,28 @@ export default function PlacesAutocomplete({
         fields: ['formattedAddress', 'location'],
       })
 
-      onSelect({
+      console.log(place)
+
+      onSelectAction({
         address: place.formattedAddress || suggestion.text,
         placeId: suggestion.placeId,
         location: place.location ? {
-          latitude: place.Cg.location.lat,
-          longitude: place.Cg.location.lng,
+          latitude: place.Dg.location.lat,
+          longitude: place.Dg.location.lng,
         } : undefined,
       })
       setSuggestions([])
     } catch (err) {
       console.error('Failed to fetch place details:', err)
       // Fallback to just the text if place details fails
-      onSelect({
+      onSelectAction({
         address: suggestion.text,
         placeId: suggestion.placeId,
       })
     } finally {
       setLoading(false)
     }
-  }, [onSelect])
+  }, [onSelectAction])
 
   // debounce input
   useEffect(() => {
@@ -110,7 +112,7 @@ export default function PlacesAutocomplete({
       <Input
         placeholder="e.g., 123 Main Street, Manchester"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChangeAction(e.target.value)}
         className="border-gray-300"
       />
 

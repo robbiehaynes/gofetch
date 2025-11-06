@@ -200,16 +200,19 @@ export default function NavDock() {
     }
   }, [isSettingsDrawerOpen]);
 
-  const refreshPickupCounts = () => {
+  const refreshPickupCounts = async () => {
     try {
-      const stored = JSON.parse(localStorage.getItem("gofetch_pickups") || "[]");
-      const active = stored.filter((p: any) => !p.completed).length;
-      const completed = stored.filter((p: any) => !!p.completed).length;
-      setActivePickupsCount(active);
-      setCompletedPickupsCount(completed);
+      const res = await fetch('/api/pickups', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Failed to load pickup counts')
+      const json = await res.json()
+      const list = (json.data || []) as any[]
+      const active = list.filter((p) => !p.completed).length
+      const completed = list.filter((p) => !!p.completed).length
+      setActivePickupsCount(active)
+      setCompletedPickupsCount(completed)
     } catch {
-      setActivePickupsCount(0);
-      setCompletedPickupsCount(0);
+      setActivePickupsCount(0)
+      setCompletedPickupsCount(0)
     }
   }
 
