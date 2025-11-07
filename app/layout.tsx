@@ -13,6 +13,13 @@ export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "GoFetch",
   description: "The easiest way to be right on time for pickups",
+  appleWebApp: {
+    title: "GoFetch",
+    statusBarStyle: "black-translucent",
+    startupImage: [
+      '/ios-startup-659x1004.png'
+    ]
+  }
 };
 
 const geistSans = Geist({
@@ -29,9 +36,6 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
-        <Head>
-          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></meta>
-        </Head>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
