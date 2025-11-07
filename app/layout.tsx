@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Head from "next/head";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
@@ -28,6 +29,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.className} antialiased`}>
+        <Head>
+          <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></meta>
+        </Head>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
