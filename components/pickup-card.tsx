@@ -169,7 +169,7 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocat
         const notifyKey = `${pickup.id}:${leaveAt}`
         if (crossedThreshold && notifiedKeyRef.current !== notifyKey) {
           if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === "granted") {
-            new Notification("GoFetch", {
+            new Notification("Time to leave!", {
               body: `Leave now to arrive ${(pickup.buffer ?? 10)} minutes before the ${pickup.scheduledArrival ? new Date(pickup.scheduledArrival).toLocaleTimeString() : "arrival"} train to ${pickup.location}`,
               icon: "/car-driving.webp",
             })

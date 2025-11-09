@@ -13,7 +13,7 @@ export async function AuthButton() {
     <div className="flex items-center gap-4">
       Hey, {user.user_metadata.display_name ? user.user_metadata.display_name : user.email}!
       <Button asChild variant={"outline"}>
-        <Link href="/app">Dashboard</Link>
+        <Link href="/dashboard">Dashboard</Link>
       </Button>
       <LogoutButton />
     </div>
