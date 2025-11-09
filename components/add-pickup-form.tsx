@@ -213,6 +213,11 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
         return
       }
 
+      if (res.status === 403) {
+        toast.error("You have reached the maximum limit of 3 active pickups")
+        return
+      }
+
       if (!res.ok) throw new Error('Failed to create pickup')
 
       // Store default buffer of 5 minutes for this pickup
@@ -237,7 +242,10 @@ export function AddPickupForm({ onSuccess, onCancel }: AddPickupFormProps) {
             <Button onClick={onCancel} variant={"ghost"} className="p-2 rounded-lg">
               <ArrowLeft className="w-5 h-5 text-muted-foreground" />
             </Button>
-            <h2 className="text-2xl font-bold text-foreground">Select Station</h2>
+            <div>
+              <h2 className="text-2xl font-bold text-foreground">Select Station</h2>
+              <p className="text-xs text-muted-foreground mt-1">You can have up to 3 active pickups at a time</p>
+            </div>
           </div>
 
           <div className="space-y-4">

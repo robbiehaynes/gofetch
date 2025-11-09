@@ -71,6 +71,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid payload" }, { status: 400 })
     }
 
+    // Check for active pickups limit
+    const { data: activePickups, error: countError } = await supabase
+      .from("pickups")
+      .select("id", { count: 'exact' })
+      .eq("user_id", user.id)
+      .eq("completed", false)
+
+    if (countError) throw countError
+
+    if ((activePickups?.length ?? 0) >= 3) {
+      return NextResponse.json(
+        { error: "You have reached the maximum limit of 3 active pickups" },
+        { status: 403 }
+      )
+    }
+
     const row = toDb(body, user.id)
     const { data, error } = await supabase
       .from("pickups")
