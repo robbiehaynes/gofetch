@@ -73,7 +73,7 @@ export function LoginForm({
       }
       
       // The endpoint will redirect, but we can also handle it client-side
-      router.push("/app");
+      router.push("/dashboard");
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "Verification failed");
       setIsVerifying(false);
