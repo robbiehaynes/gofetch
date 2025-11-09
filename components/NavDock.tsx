@@ -172,9 +172,7 @@ export default function NavDock() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
   const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [updateFrequency, setUpdateFrequency] = useState("1");
-  const [localOnlyMode, setLocalOnlyMode] = useState(false);
   const [preferredNavigationApp, setPreferredNavigationApp] = useState("google");
   const [activePickupsCount, setActivePickupsCount] = useState(0);
   const [completedPickupsCount, setCompletedPickupsCount] = useState(0);
@@ -184,9 +182,7 @@ export default function NavDock() {
     const settings = localStorage.getItem("gofetch_settings");
     if (settings) {
       const parsed = JSON.parse(settings);
-      setNotificationsEnabled(parsed.notificationsEnabled ?? true);
       setUpdateFrequency(parsed.updateFrequency ?? "1");
-      setLocalOnlyMode(parsed.localOnlyMode ?? false);
       setPreferredNavigationApp(parsed.preferredNavigationApp ?? "google");
     }
     // Initial pickup counts
@@ -218,19 +214,12 @@ export default function NavDock() {
 
   const handleSaveSettings = () => {
     const settings = {
-      notificationsEnabled,
       updateFrequency: parseInt(updateFrequency),
-      localOnlyMode
     };
     // Persist preferred navigation app as part of settings
     const settingsWithPref = { ...settings, preferredNavigationApp };
     localStorage.setItem("gofetch_settings", JSON.stringify(settingsWithPref));
     setIsSettingsDrawerOpen(false);
-
-    // Request notification permission if enabled
-    if (notificationsEnabled && "Notification" in window) {
-      Notification.requestPermission();
-    }
 
     // Dispatch custom event for dashboard to pick up changes
     window.dispatchEvent(new CustomEvent("settingsUpdated", { detail: settingsWithPref }));
@@ -293,15 +282,8 @@ export default function NavDock() {
                 <DrawerDescription>Update your user preferences</DrawerDescription>
               </DrawerHeader>
               <div className="p-4 pb-0 space-y-6">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="notifications" 
-                    checked={notificationsEnabled}
-                    onCheckedChange={(checked) => setNotificationsEnabled(checked as boolean)}
-                  />
-                  <Label htmlFor="notifications">Enable Notifications</Label>
-                </div>
 
+                {/* Update Frequency */}
                 <div className="space-y-2">
                   <Label htmlFor="frequency">Update Frequency (minutes)</Label>
                   <Input
@@ -333,20 +315,25 @@ export default function NavDock() {
                   </DropdownMenu>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="localOnly" 
-                    checked={localOnlyMode}
-                    onCheckedChange={(checked) => setLocalOnlyMode(checked as boolean)}
-                  />
-                  <Label htmlFor="localOnly">Local Only Mode</Label>
-                </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="frequency">Select Theme</Label><br />
                   <ThemeSwitcher />
                 </div>
               </div>
+              
+              {/* Developer Credit */}
+              <div className="pt-4 text-center text-sm text-gray-500">
+                Developed by{" "}
+                <a
+                  href="https://haynoway.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-gray-700"
+                >
+                  <span style={{ fontFamily: 'Pacifico, cursive' }}>HaynoWays</span>
+                </a>
+              </div>
+
               <DrawerFooter className="mt-4">
                 <Button onClick={handleSaveSettings}>Save</Button>
                 <DrawerClose asChild>

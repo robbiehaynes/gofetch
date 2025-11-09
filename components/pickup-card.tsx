@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -34,7 +34,6 @@ interface PickupCardProps {
   }
   isActive: boolean
   settings: {
-    notificationsEnabled: boolean
     updateFrequency: number
     localOnlyMode: boolean
   }
@@ -47,13 +46,15 @@ interface PickupCardProps {
 export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocationUpdate, lastUpdated, isUpdating }: PickupCardProps) {
   const [departureTime, setDepartureTime] = useState<number | null>(null)
   const [timeUntilDeparture, setTimeUntilDeparture] = useState<number | null>(null)
-  const [notificationShown, setNotificationShown] = useState(false)
   const [isEditingBuffer, setIsEditingBuffer] = useState(false)
   const [bufferInput, setBufferInput] = useState("")
   const [isSettingLocation, setIsSettingLocation] = useState(false)
   const [userLocation, setUserLocation] = useState("")
   const [userCoordsTemp, setUserCoordsTemp] = useState<Coordinates | null>(null)
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
+  // Track last time-left to detect crossing the 0s threshold and a per-pickup notification key to avoid loops
+  const prevTimeLeftRef = useRef<number | null>(null)
+  const notifiedKeyRef = useRef<string | null>(null)
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000)
@@ -132,9 +133,6 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocat
   // Combined time calculations and countdown effect (only when active)
   useEffect(() => {
     if (!isActive) return
-
-    // Reset states when pickup becomes active
-    setNotificationShown(false)
     
     // Calculate departure time
     const calculateDepartureTime = () => {
@@ -142,35 +140,48 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocat
       const currentDelay = pickup.currentDelay ?? 0
       const travelTime = pickup.travelTime ?? 0
       const buffer = pickup.buffer ?? 10
-      if (!scheduledArrival) return 0
+      // If we don't have a valid scheduled arrival yet, don't compute
+      if (!scheduledArrival || Number.isNaN(scheduledArrival)) return NaN
       const adjustedArrival = scheduledArrival + currentDelay * 60000
       return adjustedArrival - travelTime * 60000 - buffer * 60000
     }
 
     // Update countdown
     const updateCountdown = () => {
-      const departureTime = calculateDepartureTime()
-      setDepartureTime(departureTime)
-      
+      const leaveAt = calculateDepartureTime()
+      // Guard against invalid/placeholder values to prevent premature notifications
+      if (!Number.isFinite(leaveAt) || leaveAt <= 0) {
+        setDepartureTime(null)
+        setTimeUntilDeparture(null)
+        prevTimeLeftRef.current = null
+        return
+      }
+
+      setDepartureTime(leaveAt)
+
       const now = Date.now()
-      const timeLeft = departureTime - now
+      const timeLeft = leaveAt - now
 
       if (timeLeft <= 0) {
         setTimeUntilDeparture(0)
-        // Only show notification if we haven't shown it yet and notifications are enabled
-        if (!notificationShown && settings.notificationsEnabled) {
-          if ("Notification" in window && Notification.permission === "granted") {
+        // Only notify when we cross from >0 to <=0 and for a new leaveAt value
+        const crossedThreshold = prevTimeLeftRef.current !== null && prevTimeLeftRef.current > 0
+        const notifyKey = `${pickup.id}:${leaveAt}`
+        if (crossedThreshold && notifiedKeyRef.current !== notifyKey) {
+          if (typeof window !== 'undefined' && "Notification" in window && Notification.permission === "granted") {
             new Notification("GoFetch", {
               body: `Leave now to arrive ${(pickup.buffer ?? 10)} minutes before the ${pickup.scheduledArrival ? new Date(pickup.scheduledArrival).toLocaleTimeString() : "arrival"} train to ${pickup.location}`,
               icon: "/car-driving.webp",
             })
-            // Mark notification as shown immediately after showing it
-            setNotificationShown(true)
+            notifiedKeyRef.current = notifyKey
           }
         }
       } else {
         setTimeUntilDeparture(timeLeft)
       }
+
+      // Update previous time-left snapshot
+      prevTimeLeftRef.current = timeLeft
     }
 
     // Initial countdown update
@@ -180,7 +191,14 @@ export function PickupCard({ pickup, isActive, settings, onBufferUpdate, onLocat
     const countdownInterval = setInterval(updateCountdown, 1000)
 
     return () => clearInterval(countdownInterval)
-  }, [isActive, pickup, settings.notificationsEnabled])
+  }, [
+    isActive,
+    pickup.id,
+    pickup.scheduledArrival,
+    pickup.currentDelay,
+    pickup.travelTime,
+    pickup.buffer,
+  ])
 
   const isTimeToLeave = timeUntilDeparture !== null && timeUntilDeparture <= 0
 

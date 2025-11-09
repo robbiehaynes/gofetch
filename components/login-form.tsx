@@ -65,7 +65,7 @@ export function LoginForm({
 
     try {
       const response = await fetch(
-        `/auth/confirm?email=${encodeURIComponent(email)}&token=${otp}&type=email&next=/app`
+        `/auth/confirm?email=${encodeURIComponent(email)}&token=${otp}&type=email&next=/dashboard`
       );
       
       if (!response.ok) {

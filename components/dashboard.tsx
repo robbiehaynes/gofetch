@@ -55,7 +55,6 @@ export function Dashboard() {
   const [isCompletingPickup, setIsCompletingPickup] = useState(false)
   const [isDeletingPickup, setIsDeletingPickup] = useState(false)
   const [settings, setSettings] = useState({
-    notificationsEnabled: true,
     updateFrequency: 1,
     localOnlyMode: false
   })
@@ -73,6 +72,15 @@ export function Dashboard() {
     const storedSettings = localStorage.getItem("gofetch_settings")
     if (storedSettings) {
       setSettings(JSON.parse(storedSettings))
+    }
+
+    // Request notification permission if enabled
+    if ("Notification" in window && Notification.permission !== "denied" && Notification.permission !== "granted") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          console.log("Notification permission granted")
+        }
+      })
     }
 
     // Load active pickups from API
