@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Head from "next/head";
+import { Analytics } from "@vercel/analytics/next"
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
@@ -43,6 +43,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <Analytics />
           <Toaster />
         </ThemeProvider>
       </body>
